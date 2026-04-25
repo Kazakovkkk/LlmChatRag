@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package embedding;
+
+option java_package = "com.example.grpc.embedding";
+option java_multiple_files = true;
+
+service EmbeddingService {
+  rpc Embed (EmbedRequest) returns (EmbedResponse);
+  rpc EmbedBatch (EmbedBatchRequest) returns (EmbedBatchResponse);
+}
+
+message EmbedRequest {
+  string text = 1;
+}
+
+message EmbedResponse {
+  repeated float vector = 1;
+}
+
+message EmbedBatchRequest {
+  repeated string texts = 1;
+}
+
+message EmbedBatchResponse {
+  repeated EmbedResponse embeddings = 1;
+}

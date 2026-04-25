@@ -1,0 +1,8 @@
+EmbeddingService/src/main/resorces/application.properties
+EmbeddingService/src/main/resorces/application.yml
+LlmChatRag/src/main/resorces/application.yml
+LlmChatRag/src/main/resorces/application.yml
+llmservice/src/main/resorces/application.yml
+llmservice/src/main/resorces/application.yml
+QdrantService/src/main/resorces/application.yml
+QdrantService/src/main/resorces/application.yml

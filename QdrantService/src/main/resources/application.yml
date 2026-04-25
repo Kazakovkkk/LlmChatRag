@@ -1,0 +1,16 @@
+spring:
+  grpc:
+    client:
+      channels:
+        embedding-service:
+          address: static://localhost:9091
+          negotiation-type: plaintext
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+embedding:
+  service:
+    url: ${EMBEDDING_SERVICE_URL:http://localhost:8084}
+  protocol: ${EMBEDDING_PROTOCOL:grpc}

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package llm;
+
+option java_package = "com.example.grpc.llm";
+option java_multiple_files = true;
+
+service LlmService {
+  rpc AnswerStream (AnswerStreamRequest) returns (stream AnswerStreamResponse);
+}
+
+message MessageProto {
+  string role = 1;
+  string content = 2;
+}
+
+message AnswerStreamRequest {
+  string question = 1;
+  string context = 2;
+  repeated MessageProto history = 3;
+  string timestamp = 4;
+}
+
+message AnswerStreamResponse {
+  string token = 1;
+}

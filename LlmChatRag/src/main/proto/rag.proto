@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package rag;
+
+option java_package = "com.example.grpc";
+option java_multiple_files = true;
+
+service RagService {
+  rpc SearchSimilar (SearchRequest) returns (SearchResponse);
+  rpc UploadDocument (UploadRequest) returns (UploadResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message SearchResponse {
+  repeated DocumentProto documents = 1;
+}
+
+message DocumentProto {
+  string id = 1;
+  string text = 2;
+  double score = 3;
+  map<string, string> metadata = 4;
+}
+
+message UploadRequest {
+  bytes pdf_data = 1;
+  string filename = 2;
+  repeated string tags = 3;
+}
+
+message UploadResponse {
+  bool success = 1;
+  string message = 2;
+  string filename = 3;
+  string tag = 4;
+}

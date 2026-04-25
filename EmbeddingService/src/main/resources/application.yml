@@ -1,0 +1,11 @@
+server:
+  port: 8084
+
+spring:
+  grpc:
+    server:
+      port: 9091  # ← gRPC порт для embedding-service
+
+huggingface:
+  tei:
+    url: ${HUGGINGFACE_TEI_URL:http://localhost:8081}
