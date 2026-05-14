@@ -15,12 +15,12 @@ import java.util.List;
 public class ChunkRouter {
 
     @Value("${chunking.strategy:semantic}")
-    private String strategy; // "semantic", "fixed", "recursive"
+    private String strategy;
 
     private final SemanticChunker semanticChunker;
     private final FixedSizeChunker fixedSizeChunker;
     private final RecursiveChunker recursiveChunker;
-    private final PdfTextExtractor pdfTextExtractor; // Нужен для семантического чанкования
+    private final PdfTextExtractor pdfTextExtractor;
 
     public ChunkingResult processText(String cleanText) {
         log.info("Выбрана стратегия чанкования: {}", strategy.toUpperCase());
@@ -35,7 +35,6 @@ public class ChunkRouter {
                 yield new ChunkingResult(chunks, List.of(), List.of());
             }
             case "semantic" -> {
-                // Извлекаем предложения здесь, так как они нужны только семантическому чанкеру
                 List<String> sentences = pdfTextExtractor.splitIntoSentences(cleanText);
                 yield semanticChunker.chunkWithDetails(sentences);
             }

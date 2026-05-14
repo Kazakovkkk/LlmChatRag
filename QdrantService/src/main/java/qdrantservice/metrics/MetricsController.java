@@ -45,11 +45,23 @@ public class MetricsController {
             Map<String, Object> keywordMetrics = metricsService.evaluate("keyword", k);
             Map<String, Object> hybridMetrics = metricsService.evaluate("hybrid", k);
 
+            Map<String, Object> vectorResult = new LinkedHashMap<>();
+            vectorResult.put("metrics", vectorMetrics.get("metrics"));
+            vectorResult.put("searchTime", vectorMetrics.get("searchTime"));
+
+            Map<String, Object> keywordResult = new LinkedHashMap<>();
+            keywordResult.put("metrics", keywordMetrics.get("metrics"));
+            keywordResult.put("searchTime", keywordMetrics.get("searchTime"));
+
+            Map<String, Object> hybridResult = new LinkedHashMap<>();
+            hybridResult.put("metrics", hybridMetrics.get("metrics"));
+            hybridResult.put("searchTime", hybridMetrics.get("searchTime"));
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("k", k);
-            result.put("vector", vectorMetrics.get("metrics"));
-            result.put("keyword", keywordMetrics.get("metrics"));
-            result.put("hybrid", hybridMetrics.get("metrics"));
+            result.put("vector", vectorResult);
+            result.put("keyword", keywordResult);
+            result.put("hybrid", hybridResult);
             result.put("totalEvaluationTimeMs", System.currentTimeMillis() - start);
 
             return ResponseEntity.ok(result);

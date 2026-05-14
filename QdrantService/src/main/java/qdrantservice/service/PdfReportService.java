@@ -14,7 +14,6 @@ import java.util.List;
 @Service
 public class PdfReportService {
 
-    // ─── Общий метод создания шрифта с поддержкой кириллицы ──
     private Font createFont(float size, int style, Color color) {
         try {
             BaseFont bf = BaseFont.createFont(
@@ -25,7 +24,6 @@ public class PdfReportService {
         }
     }
 
-    // ─── PDF 1: Очищенный текст после фильтрации ─────────────
     public byte[] generateCleanTextPdf(String cleanText, String filename) {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -49,11 +47,9 @@ public class PdfReportService {
             subtitle.setSpacingAfter(20);
             doc.add(subtitle);
 
-            // Разделитель
             doc.add(new LineSeparator());
             doc.add(Chunk.NEWLINE);
 
-            // Текст
             Paragraph body = new Paragraph(cleanText, bodyFont);
             body.setLeading(14);
             doc.add(body);
@@ -68,7 +64,6 @@ public class PdfReportService {
         }
     }
 
-    // ─── PDF 2: Предложения с косинусным сходством ───────────
     public byte[] generateSentencesSimilarityPdf(
             List<String> sentences,
             List<float[]> embeddings,
@@ -88,7 +83,7 @@ public class PdfReportService {
             Font highSimFont = createFont(9, Font.ITALIC, new Color(0, 140, 0));
             Font lowSimFont = createFont(9, Font.ITALIC, new Color(180, 0, 0));
 
-            // Заголовок
+
             Paragraph title = new Paragraph(
                     "Предложения и косинусное сходство", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
@@ -101,7 +96,6 @@ public class PdfReportService {
             subtitle.setSpacingAfter(10);
             doc.add(subtitle);
 
-            // Легенда
             Font legendFont = createFont(9, Font.NORMAL, Color.DARK_GRAY);
             Paragraph legend = new Paragraph(
                     "Легенда: сходство > 0.79 = высокое (зелёный) | < 0.79 = низкое (красный) = граница чанка",
@@ -113,7 +107,7 @@ public class PdfReportService {
             doc.add(new LineSeparator());
             doc.add(Chunk.NEWLINE);
 
-            // Каждое предложение
+
             for (int i = 0; i < sentences.size(); i++) {
                 // Номер + предложение
                 Phrase phrase = new Phrase();
@@ -123,7 +117,6 @@ public class PdfReportService {
                 sentPara.setLeading(13);
                 doc.add(sentPara);
 
-                // Сходство с предыдущим
                 if (i > 0 && embeddings != null && embeddings.size() > i) {
                     double simPrev = cosineSimilarity(
                             embeddings.get(i - 1), embeddings.get(i));
@@ -138,7 +131,6 @@ public class PdfReportService {
                     doc.add(simPara);
                 }
 
-                // Сходство со следующим
                 if (i < sentences.size() - 1 && embeddings != null
                         && embeddings.size() > i + 1) {
                     double simNext = cosineSimilarity(
@@ -168,7 +160,6 @@ public class PdfReportService {
         }
     }
 
-    // ─── PDF 3: Финальные чанки ───────────────────────────────
     public byte[] generateChunksPdf(List<String> chunks, String filename) {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -182,7 +173,6 @@ public class PdfReportService {
             Font chunkFont = createFont(10, Font.NORMAL, Color.BLACK);
             Font statsFont = createFont(9, Font.ITALIC, new Color(100, 100, 100));
 
-            // Заголовок
             Paragraph title = new Paragraph("Семантические чанки", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             doc.add(title);
@@ -197,25 +187,25 @@ public class PdfReportService {
             doc.add(new LineSeparator());
             doc.add(Chunk.NEWLINE);
 
-            // Каждый чанк
+
             for (int i = 0; i < chunks.size(); i++) {
                 String chunk = chunks.get(i);
                 int wordCount = chunk.split("\\s+").length;
 
-                // Заголовок чанка
+
                 Paragraph chunkTitle = new Paragraph(
                         "Чанк #" + (i + 1), numFont);
                 chunkTitle.setSpacingBefore(10);
                 doc.add(chunkTitle);
 
-                // Статистика чанка
+
                 Paragraph stats = new Paragraph(
                         "Слов: " + wordCount + " | Символов: " + chunk.length(),
                         statsFont);
                 stats.setSpacingAfter(5);
                 doc.add(stats);
 
-                // Текст чанка в рамке
+
                 PdfPTable table = new PdfPTable(1);
                 table.setWidthPercentage(100);
 
@@ -230,7 +220,7 @@ public class PdfReportService {
                 doc.add(Chunk.NEWLINE);
             }
 
-            // Итоговая статистика
+
             doc.add(new LineSeparator());
             doc.add(Chunk.NEWLINE);
 

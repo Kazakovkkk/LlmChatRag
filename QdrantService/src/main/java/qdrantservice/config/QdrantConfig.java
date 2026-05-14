@@ -91,7 +91,6 @@ public class QdrantConfig {
         }
     }
 
-    // ← Новый метод для bm25_stats
     private void createBm25StatsCollectionIfNotExists(QdrantClient qdrantClient) {
         try {
             boolean exists = qdrantClient.listCollectionsAsync().get()
@@ -105,7 +104,6 @@ public class QdrantConfig {
 
             log.info("Создаём коллекцию '{}'", BM25_STATS_COLLECTION);
 
-            // Минимальный вектор размером 1 — нам нужен только payload
             qdrantClient.createCollectionAsync(
                     CreateCollection.newBuilder()
                             .setCollectionName(BM25_STATS_COLLECTION)

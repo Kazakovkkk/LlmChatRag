@@ -16,9 +16,9 @@ import java.util.stream.Collectors;
 public class SemanticChunker {
 
 
-    private static final double SIMILARITY_THRESHOLD = 0.79;
+    private static final double SIMILARITY_THRESHOLD = 0.82;
     private static final int MIN_SENTENCES_PER_CHUNK = 2;
-    private static final int MAX_SENTENCES_PER_CHUNK = 8;
+    private static final int MAX_SENTENCES_PER_CHUNK = 6;
 
     private final EmbeddingRouter embeddingRouter;
 
@@ -94,7 +94,6 @@ public class SemanticChunker {
 
         List<String> filteredChunks = chunks.stream()
                 .filter(chunk -> chunk.split("\\s+").length >= 10)
-                .filter(chunk -> chunk.length() >= 50)
                 .collect(Collectors.toList());
 
         log.info("Чанков после фильтрации: {} (было {})", filteredChunks.size(), chunks.size());

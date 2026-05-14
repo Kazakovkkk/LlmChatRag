@@ -3,9 +3,9 @@ public class ScoredDocument {
     private String text;
     private float score;
     private String searchType;
-    private Float vectorScore;   // ← score от векторного поиска
-    private Float keywordScore;  // ← score от BM25 поиска
-    private Float rrfScore;      // ← итоговый RRF score
+    private Float vectorScore;
+    private Float keywordScore;
+    private Float rrfScore;
 
     public ScoredDocument(String text, float score, String searchType) {
         this.text = text;

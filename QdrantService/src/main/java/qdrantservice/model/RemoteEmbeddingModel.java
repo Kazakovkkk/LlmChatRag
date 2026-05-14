@@ -22,8 +22,6 @@ public class RemoteEmbeddingModel extends AbstractEmbeddingModel {
     @Override
     public EmbeddingResponse call(EmbeddingRequest request) {
         String text = request.getInstructions().get(0);
-
-        // Вызываем embedding-service
         float[] vector = embeddingRestClient.post()
                 .uri("/embed")
                 .contentType(MediaType.APPLICATION_JSON)

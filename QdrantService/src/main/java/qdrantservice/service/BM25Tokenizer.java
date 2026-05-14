@@ -33,13 +33,9 @@ public class BM25Tokenizer {
     public BM25Tokenizer(BM25StatsRepository statsRepository) {
         this.statsRepository = statsRepository;
     }
-
-    // ─── Загрузка статистики при старте ──────────────────────
     @PostConstruct
     public void loadStats() {
-        log.info("Загрузка BM25 статистики из Qdrant...");
-
-        // Загружаем глобальную статистику
+        log.info("Загрузка BM25 статистики из Qdrant");
         statsRepository.loadGlobalStats().ifPresentOrElse(
                 stats -> {
                     totalDocuments.set(stats.totalDocuments());
@@ -48,20 +44,16 @@ public class BM25Tokenizer {
                     log.info("BM25 глобальная статистика загружена | docs: {} | avgLen: {}",
                             stats.totalDocuments(), stats.avgDocumentLength());
                 },
-                () -> log.info("BM25 статистика не найдена — начинаем с нуля")
+                () -> log.info("BM25 статистика не найдена")
         );
-
-        // Загружаем document frequency
         Map<String, Integer> df = statsRepository.loadDocumentFrequency();
         if (!df.isEmpty()) {
             documentFrequency.putAll(df);
             log.info("BM25 document frequency загружен | {} терминов", df.size());
         }
-
         logStats();
     }
 
-    // ─── Индексация документа ─────────────────────────────────
     public void indexDocument(String documentId, String text) {
         List<String> terms = tokenizeToTerms(text);
         int docLength = terms.size();
@@ -77,7 +69,7 @@ public class BM25Tokenizer {
             documentFrequency.merge(term, 1, Integer::sum);
         }
 
-        // Сохраняем в Qdrant асинхронно каждые 10 документов
+
         if (totalDocs % 10 == 0) {
             persistStats();
         }
@@ -86,7 +78,6 @@ public class BM25Tokenizer {
                 documentId, docLength, avgDocumentLength);
     }
 
-    // ─── Принудительное сохранение статистики ────────────────
     public void persistStats() {
         log.info("Сохраняем BM25 статистику в Qdrant...");
         statsRepository.saveGlobalStats(
@@ -98,7 +89,6 @@ public class BM25Tokenizer {
         log.info("BM25 статистика сохранена");
     }
 
-    // ─── Остальные методы без изменений ──────────────────────
     public Map<Integer, Float> tokenize(String text) {
         return tokenizeWithBM25(text, true);
     }

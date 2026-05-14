@@ -26,15 +26,14 @@ public class PdfTextExtractor {
 
     private String cleanTextAdvanced(String text) {
         if (text == null) return "";
-
-
-        String[] lines = text.split("\\n");//символ конца строки
+        String[] lines = text.split("\\n");
         return Arrays.stream(lines)
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
                 .filter(line -> !line.matches(".*\\.{4,}.*"))
                 .collect(Collectors.joining(" "))
                 .replaceAll("\\s{2,}", " ")
+                .replaceAll("\\.{2,}", " ")
                 .trim();
     }
 

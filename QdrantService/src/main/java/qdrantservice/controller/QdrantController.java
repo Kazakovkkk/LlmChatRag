@@ -31,7 +31,6 @@ public class QdrantController {
         return "Incident added successfully!";
     }
 
-    // ← Обновлённый эндпоинт — принимает SearchRequest с типом поиска
     @PostMapping(path = "/similar", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<Document>> getSimilarIncidents(
             @RequestBody SearchRequest request) {
@@ -72,7 +71,6 @@ public class QdrantController {
 
             log.info("Загрузка PDF: {}, тег: {}", originalFilename, tag);
 
-            // Запускаем асинхронно и сразу возвращаем ответ
             incidentService.storePdfDocumentAsync(file.getBytes(), List.of(tag));
 
             return ResponseEntity.ok(Map.of(

@@ -29,12 +29,18 @@ public class RetrievalMetricsService {
         List<Double> recalls = new ArrayList<>();
         List<Double> reciprocalRanks = new ArrayList<>();
         List<Double> ndcgs = new ArrayList<>();
+        List<Long> searchTimesMs = new ArrayList<>();
 
         List<Map<String, Object>> details = new ArrayList<>();
 
         for (EvaluationDataset.TestCase testCase : testCases) {
+            long searchStart = System.currentTimeMillis();
+
             List<Document> retrieved = embeddingService
                     .searchSimilarIncidents(testCase.question(), k, searchType);
+
+            long searchTimeMs = System.currentTimeMillis() - searchStart;
+            searchTimesMs.add(searchTimeMs);
 
             // Определяем релевантность каждого документа
             List<Boolean> relevanceList = retrieved.stream()
@@ -42,7 +48,7 @@ public class RetrievalMetricsService {
                     .collect(Collectors.toList());
 
             double precision = calculatePrecisionAtK(relevanceList, k);
-            double recall = calculateRecallAtK(relevanceList, testCase);
+            double recall = calculateRecallAtK(retrieved, testCase, k);
             double mrr = calculateReciprocalRank(relevanceList);
             double ndcg = calculateNDCG(relevanceList, k);
 
@@ -60,6 +66,7 @@ public class RetrievalMetricsService {
             detail.put("ndcg@" + k, String.format("%.3f", ndcg));
             detail.put("retrieved_count", retrieved.size());
             detail.put("relevant_found", relevanceList.stream().filter(b -> b).count());
+            detail.put("searchTimeMs", searchTimeMs);
             details.add(detail);
         }
 
@@ -69,8 +76,27 @@ public class RetrievalMetricsService {
         double meanMRR = reciprocalRanks.stream().mapToDouble(d -> d).average().orElse(0);
         double avgNDCG = ndcgs.stream().mapToDouble(d -> d).average().orElse(0);
 
+        double avgSearchTimeMs = searchTimesMs.stream()
+                .mapToLong(Long::longValue)
+                .average()
+                .orElse(0.0);
+
+        long minSearchTimeMs = searchTimesMs.stream()
+                .mapToLong(Long::longValue)
+                .min()
+                .orElse(0L);
+
+        long maxSearchTimeMs = searchTimesMs.stream()
+                .mapToLong(Long::longValue)
+                .max()
+                .orElse(0L);
+
+        long totalSearchTimeMs = searchTimesMs.stream()
+                .mapToLong(Long::longValue)
+                .sum();
+
         // Логируем итоги
-        logResults(searchType, k, avgPrecision, avgRecall, meanMRR, avgNDCG);
+        logResults(searchType, k, testCases.size(), avgPrecision, avgRecall, meanMRR, avgNDCG);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("searchType", searchType);
@@ -82,27 +108,59 @@ public class RetrievalMetricsService {
                 "MRR", String.format("%.4f", meanMRR),
                 "NDCG@K", String.format("%.4f", avgNDCG)
         ));
+        result.put("searchTime", Map.of(
+                "avgSearchTimeMs", String.format("%.2f", avgSearchTimeMs),
+                "minSearchTimeMs", minSearchTimeMs,
+                "maxSearchTimeMs", maxSearchTimeMs,
+                "totalSearchTimeMs", totalSearchTimeMs
+        ));
         result.put("details", details);
 
         return result;
     }
 
     //сколько из k найденных документов релевантны
+    // Precision@K показывает, какая доля найденных документов среди первых K является релевантной.
     private double calculatePrecisionAtK(List<Boolean> relevance, int k) {
+        int denominator = Math.min(k, relevance.size());
+
+        if (denominator == 0) {
+            return 0.0;
+        }
+
         long relevant = relevance.stream()
                 .limit(k)
-                .filter(b -> b)
+                .filter(Boolean::booleanValue)
                 .count();
-        return (double) relevant / Math.min(k, relevance.size());
+
+        return (double) relevant / denominator;
     }
 
-    // ─── Recall@K сколько Она показывает, какой процент ключевой информации из правильного ответа попал в найденные чанки.
-    private double calculateRecallAtK(List<Boolean> relevance,
-                                      EvaluationDataset.TestCase testCase) {
-        long relevantFound = relevance.stream().filter(b -> b).count();
-        // Считаем сколько уникальных ключевых слов должно быть найдено
-        int totalRelevant = Math.max(1, testCase.relevantKeywords().size() / 2);
-        return Math.min(1.0, (double) relevantFound / totalRelevant);
+    // Recall@K показывает, какая доля ключевой информации из эталонного ответа
+// была найдена в первых K возвращённых чанках.
+    private double calculateRecallAtK(List<Document> retrieved,
+                                      EvaluationDataset.TestCase testCase,
+                                      int k) {
+        List<String> keywords = testCase.relevantKeywords();
+
+        if (keywords == null || keywords.isEmpty()) {
+            return 0.0;
+        }
+
+        String combinedTopKText = retrieved.stream()
+                .limit(k)
+                .map(Document::getText)
+                .filter(Objects::nonNull)
+                .map(String::toLowerCase)
+                .collect(Collectors.joining(" "));
+
+        long foundKeywords = keywords.stream()
+                .filter(Objects::nonNull)
+                .map(String::toLowerCase)
+                .filter(combinedTopKText::contains)
+                .count();
+
+        return (double) foundKeywords / keywords.size();
     }
 
     // MRR (Mean Reciprocal Rank) Как быстро пользователь наткнется на первый правильный ответ?»
@@ -153,24 +211,24 @@ public class RetrievalMetricsService {
     }
 
     // ─── Логирование результатов ──────────────────────────────
-    private void logResults(String searchType, int k,
+    private void logResults(String searchType, int k, int questionsCount,
                             double precision, double recall,
                             double mrr, double ndcg) {
         log.info("""
-            ╔══════════════════════════════════════════════════════╗
-            ║         МЕТРИКИ КАЧЕСТВА ПОИСКА                      ║
-            ╠══════════════════════════════════════════════════════╣
-            ║ Тип поиска:    {}
-            ║ K:             {}
-            ║ Вопросов:      20
-            ╠══════════════════════════════════════════════════════╣
-            ║ Precision@K:   {}
-            ║ Recall@K:      {}
-            ║ MRR:           {}
-            ║ NDCG@K:        {}
-            ╚══════════════════════════════════════════════════════╝
-            """,
-                searchType, k,
+    ╔══════════════════════════════════════════════════════╗
+    ║         МЕТРИКИ КАЧЕСТВА ПОИСКА                      ║
+    ╠══════════════════════════════════════════════════════╣
+    ║ Тип поиска:    {}
+    ║ K:             {}
+    ║ Вопросов:      {}
+    ╠══════════════════════════════════════════════════════╣
+    ║ Precision@K:   {}
+    ║ Recall@K:      {}
+    ║ MRR:           {}
+    ║ NDCG@K:        {}
+    ╚══════════════════════════════════════════════════════╝
+    """,
+                searchType, k, questionsCount,
                 String.format("%.4f", precision),
                 String.format("%.4f", recall),
                 String.format("%.4f", mrr),

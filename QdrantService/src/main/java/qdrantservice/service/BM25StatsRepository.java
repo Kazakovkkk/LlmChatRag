@@ -29,7 +29,6 @@ public class BM25StatsRepository {
         this.objectMapper = new ObjectMapper();
     }
 
-    // ─── Сохранение общей статистики ─────────────────────────
     public void saveGlobalStats(int totalDocuments,
                                 double avgDocumentLength,
                                 Map<String, Integer> documentLengths) {
@@ -53,7 +52,6 @@ public class BM25StatsRepository {
         }
     }
 
-    // ─── Сохранение document frequency ───────────────────────
     public void saveDocumentFrequency(Map<String, Integer> documentFrequency) {
         try {
             Map<String, Value> payload = new HashMap<>();
@@ -71,7 +69,6 @@ public class BM25StatsRepository {
         }
     }
 
-    // ─── Загрузка глобальной статистики ──────────────────────
     public Optional<GlobalStats> loadGlobalStats() {
         try {
             List<RetrievedPoint> points = qdrantClient.retrieveAsync(
@@ -101,7 +98,6 @@ public class BM25StatsRepository {
         }
     }
 
-    // ─── Загрузка document frequency ─────────────────────────
     public Map<String, Integer> loadDocumentFrequency() {
         try {
             List<RetrievedPoint> points = qdrantClient.retrieveAsync(
@@ -125,7 +121,6 @@ public class BM25StatsRepository {
         }
     }
 
-    // ─── Вспомогательный метод upsert ────────────────────────
     private void upsertPoint(String uuid, Map<String, Value> payload) throws Exception {
         qdrantClient.upsertAsync(
                 COLLECTION,
@@ -141,7 +136,6 @@ public class BM25StatsRepository {
         ).get();
     }
 
-    // ─── DTO для глобальной статистики ───────────────────────
     public record GlobalStats(
             int totalDocuments,
             double avgDocumentLength,

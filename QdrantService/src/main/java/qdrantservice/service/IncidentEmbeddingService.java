@@ -92,16 +92,12 @@ public class IncidentEmbeddingService {
                 yield toDocuments(docs);
             }
             case "hybrid" -> {
-                List<ScoredDocument> docs = hybridSearchService.searchHybrid(query, limit, 0.8f);
+                List<ScoredDocument> docs = hybridSearchService.searchHybrid(query, limit, 0.7f);
                 yield toDocuments(docs);
             }
-            default -> { // Включая "vector"
-                SearchRequest searchRequest = SearchRequest.builder()
-                        .query(query)
-                        .topK(limit)
-                        .similarityThreshold(0.8)
-                        .build();
-                yield qdrantVectorStore.similaritySearch(searchRequest);
+            default -> {
+                List<ScoredDocument> docs = hybridSearchService.searchByVector(query, limit, 0.7f);
+                yield toDocuments(docs);
             }
         };
 
@@ -124,16 +120,17 @@ public class IncidentEmbeddingService {
                 System.currentTimeMillis() - t1, cleanText.length());
 
         // ← Генерируем PDF 1: очищенный текст
+        /*
         byte[] cleanTextPdf = pdfReportService.generateCleanTextPdf(cleanText, filename);
         log.info("✅ PDF 1 создан: очищенный текст ({} байт)", cleanTextPdf.length);
-
+        */
         // Шаг 2: Разбиваем на предложения
         long tRouter = System.currentTimeMillis();
         ChunkingResult result = chunkRouter.processText(cleanText);
         List<String> chunks = result.chunks();
         log.info("⏱ Чанкование завершено: {} мс | {} чанков",
                 System.currentTimeMillis() - tRouter, chunks.size());
-
+        /*
 // ← Генерируем PDF 2: предложения с косинусным сходством (ТОЛЬКО ЕСЛИ ЕСТЬ ДАННЫЕ)
         byte[] sentencesPdf = new byte[0];
         if (!result.sentences().isEmpty() && !result.embeddings().isEmpty()) {
@@ -144,13 +141,15 @@ public class IncidentEmbeddingService {
             log.info("⏩ PDF 2 пропущен (не поддерживается для текущей стратегии чанкования)");
         }
 
+
+
 // ← Генерируем PDF 3: чанки
         byte[] chunksPdf = pdfReportService.generateChunksPdf(chunks, filename);
         log.info("✅ PDF 3 создан: чанки ({} байт)", chunksPdf.length);
 
 // Сохраняем PDF отчёты (проверяем, чтобы не сохранять пустые)
         savePdfReports(filename, cleanTextPdf, sentencesPdf, chunksPdf);
-
+        */
         // Шаг 4: Сохраняем каждый чанк
         long t4 = System.currentTimeMillis();
         List<PointVectors> sparseBatch = new ArrayList<>();
