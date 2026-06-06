@@ -17,24 +17,28 @@ public class ServicesClientConfig {
     @Value("${llm.service.url:http://localhost:8083}")
     private String llmServiceUrl;
 
+    @Value("${admin.service.url:http://localhost:8087}")
+    private String adminServiceUrl;
+
     @Bean
     public RestClient qdrantRestClient() {
-        log.info("=== Qdrant URL: '{}' ===", qdrantServiceUrl);
-        return RestClient.builder()
-                .baseUrl(qdrantServiceUrl)
-                .build();
+        return RestClient.builder().baseUrl(qdrantServiceUrl).build();
     }
 
     @Bean
     public RestClient llmRestClient() {
-        return RestClient.builder()
-                .baseUrl(llmServiceUrl)
-                .build();
+        return RestClient.builder().baseUrl(llmServiceUrl).build();
     }
+
     @Bean
     public WebClient llmWebClient() {
-        return WebClient.builder()
-                .baseUrl(llmServiceUrl)
-                .build();
+        return WebClient.builder().baseUrl(llmServiceUrl).build();
+    }
+
+    // Новый клиент для асинхронной репликации сообщений в PostgreSQL админки
+    @Bean
+    public RestClient adminRestClient() {
+        log.info("=== Интеграция шины синхронизации с AdminPanel по адресу: '{}' ===", adminServiceUrl);
+        return RestClient.builder().baseUrl(adminServiceUrl).build();
     }
 }

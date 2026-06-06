@@ -1,4 +1,3 @@
-// service/SearchRouter.java
 package LlmChatRag.service;
 
 import LlmChatRag.dto.DocumentDto;
@@ -26,74 +25,61 @@ public class SearchRouter {
     @Value("${search.protocol:grpc}")
     private String protocol;
 
-    public SearchRouter(
-            @Qualifier("qdrantRestClient") RestClient qdrantRestClient,
-            RagGrpcClient ragGrpcClient) {
+    public SearchRouter(@Qualifier("qdrantRestClient") RestClient qdrantRestClient, RagGrpcClient ragGrpcClient) {
         this.qdrantRestClient = qdrantRestClient;
         this.ragGrpcClient = ragGrpcClient;
     }
 
-    public List<DocumentDto> search(String query, int limit) {
-        log.info("⏱ Поиск документов | Protocol: {} | запрос: '{}'", protocol, query);
-        long start = System.currentTimeMillis();
-
-        List<DocumentDto> result = switch (protocol) {
-            case "rest" -> searchViaRest(query, limit);
-            default -> searchViaGrpc(query, limit);
-        };
-
-        log.info("⏱ Поиск завершён | Protocol: {} | {} мс | найдено: {} документов",
-                protocol, System.currentTimeMillis() - start, result.size());
-
-        return result;
+    public List<DocumentDto> search(String hotelKey, String query, int limit) {
+        log.info("⏱ Маршрутизация поиска RAG [Hotel: {}, Protocol: {}] | Запрос: '{}'", hotelKey, protocol.toUpperCase(), query);
+        return "rest".equalsIgnoreCase(protocol) ? searchViaRest(hotelKey, query, limit) : searchViaGrpc(hotelKey, query, limit);
     }
 
-    private List<DocumentDto> searchViaGrpc(String query, int limit) {
-        log.info("→ gRPC search | запрос: '{}'", query);
-        long start = System.currentTimeMillis();
-
-        List<DocumentDto> result = ragGrpcClient.searchSimilar(query, limit);
-
-        log.info("⏱ gRPC search завершён | {} мс", System.currentTimeMillis() - start);
-        return result;
+    private List<DocumentDto> searchViaGrpc(String hotelKey, String query, int limit) {
+        return ragGrpcClient.searchSimilar(hotelKey, query, limit);
     }
 
-    private List<DocumentDto> searchViaRest(String query, int limit) {
-        log.info("→ REST search | запрос: '{}'", query);
-        long start = System.currentTimeMillis();
+    private List<DocumentDto> searchViaRest(String hotelKey, String query, int limit) {
+        SearchRequest payload = new SearchRequest(query, limit);
+        payload.setSearchType("hybrid");
 
         List<Map<String, Object>> rawResult = qdrantRestClient.post()
                 .uri("/api/incidents/similar")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new SearchRequest(query, limit))
+                .body(Map.of("hotelKey", hotelKey, "query", query, "limit", limit, "searchType", "hybrid"))
                 .retrieve()
-                .body(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
-
-        log.info("⏱ REST search завершён | {} мс", System.currentTimeMillis() - start);
+                .body(new ParameterizedTypeReference<>() {});
 
         if (rawResult == null) return List.of();
-        //log.info("REST raw ответ первого документа: {}", rawResult.get(0));
-        return rawResult.stream()
-                .map(raw -> {
-                    DocumentDto dto = new DocumentDto();
-                    dto.setId((String) raw.get("id"));
-                    dto.setText((String) raw.get("text"));
-                    // ← берём score из корня объекта
-                    if (raw.get("score") != null) {
-                        dto.setScore(((Number) raw.get("score")).doubleValue());
-                    } else {
-                        dto.setScore(0.0);
-                    }
 
-                    dto.setMetadata((Map<String, Object>) raw.get("metadata"));
-                    if (dto.getMetadata().get("score") != null){
-                        dto.setScore((Double) dto.getMetadata().get("score"));
-                    }
-                    return dto;
-                })
-                .collect(Collectors.toList());
+        return rawResult.stream().map(raw -> {
+            DocumentDto dto = new DocumentDto();
+            dto.setId((String) raw.get("id"));
+
+            // 1. РЕЗИЛЬЕНТНОЕ ИЗВЛЕЧЕНИЕ ТЕКСТА (Проверяем все возможные ключи Spring AI)
+            String extractedText = null;
+            if (raw.containsKey("text") && raw.get("text") != null) {
+                extractedText = (String) raw.get("text");
+            } else if (raw.containsKey("content") && raw.get("content") != null) {
+                extractedText = (String) raw.get("content");
+            }
+
+            // Жесткая защита от NullPointerException: если текст не найден, пишем пустую строку ""
+            dto.setText(extractedText != null ? extractedText : "");
+
+            // 2. ИЗВЛЕЧЕНИЕ SCORE (С защитой от разных вариантов размещения)
+            Map<String, Object> metadata = (Map<String, Object>) raw.get("metadata");
+            if (metadata != null && metadata.containsKey("score")) {
+                dto.setScore(((Number) metadata.get("score")).doubleValue());
+            } else if (raw.containsKey("score") && raw.get("score") != null) {
+                dto.setScore(((Number) raw.get("score")).doubleValue());
+            } else {
+                dto.setScore(0.0);
+            }
+
+            return dto;
+        }).collect(Collectors.toList());
     }
-    public String getProtocol() {
-        return protocol;
-    }
+
+    public String getProtocol() { return protocol; }
 }

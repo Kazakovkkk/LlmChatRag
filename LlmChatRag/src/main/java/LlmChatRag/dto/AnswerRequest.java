@@ -6,7 +6,7 @@ public class AnswerRequest {
     private String question;
     private String context;
     private List<MessageDto> history;
-    private String timestamp;// ← добавили
+    private String timestamp;
 
     public AnswerRequest() {}
     public AnswerRequest(String question, String context, List<MessageDto> history, String timestamp) {

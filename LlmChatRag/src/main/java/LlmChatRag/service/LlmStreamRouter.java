@@ -58,12 +58,12 @@ public class LlmStreamRouter {
                         return "{\"token\":\"\"}";
                     }
                 })
-                .doOnComplete(() -> log.info("⏱ gRPC stream завершён | {} мс",
+                .doOnComplete(() -> log.info("gRPC stream завершён | {} мс",
                         System.currentTimeMillis() - start));
     }
 
     private Flux<String> streamViaRest(AnswerRequest request) {
-        log.info("→ REST stream | вопрос: '{}'", request.getQuestion());
+        log.info("REST stream вопрос: '{}'", request.getQuestion());
         long start = System.currentTimeMillis();
 
         return llmWebClient.post()
@@ -72,7 +72,7 @@ public class LlmStreamRouter {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToFlux(String.class)
-                .doOnComplete(() -> log.info("⏱ REST stream завершён | {} мс",
+                .doOnComplete(() -> log.info("REST stream завершён {} мс",
                         System.currentTimeMillis() - start));
     }
 }

@@ -11,7 +11,6 @@ import java.util.stream.Collectors;
 public class DocumentRankingService {
 
     public List<DocumentDto> rankDocuments(List<DocumentDto> documents) {
-        // Используем текст чанка как ключ для дедупликации
         Map<String, DocumentDto> uniqueDocs = documents.stream()
                 .collect(Collectors.toMap(
                         d -> d.getText().trim(),

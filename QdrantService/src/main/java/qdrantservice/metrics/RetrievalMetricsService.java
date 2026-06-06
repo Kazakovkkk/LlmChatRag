@@ -21,8 +21,8 @@ public class RetrievalMetricsService {
         this.dataset = dataset;
     }
 
-    // ─── Главный метод оценки ─────────────────────────────────
-    public Map<String, Object> evaluate(String searchType, int k) throws InterruptedException {
+    // ─── Главный метод оценки (АДАПТИРОВАН ПОД SaaS) ───────────────────────────
+    public Map<String, Object> evaluate(String hotelKey, String searchType, int k) throws InterruptedException {
         List<EvaluationDataset.TestCase> testCases = dataset.getTestCases();
 
         List<Double> precisions = new ArrayList<>();
@@ -36,8 +36,10 @@ public class RetrievalMetricsService {
         for (EvaluationDataset.TestCase testCase : testCases) {
             long searchStart = System.currentTimeMillis();
 
+            // ИСПРАВЛЕНО: Передаем аргументы строго в соответствии с новым мультитенантным пайплайном:
+            // (hotelKey, query, limit, searchType)
             List<Document> retrieved = embeddingService
-                    .searchSimilarIncidents(testCase.question(), k, searchType);
+                    .searchSimilarIncidents(hotelKey, testCase.question(), k, searchType);
 
             long searchTimeMs = System.currentTimeMillis() - searchStart;
             searchTimesMs.add(searchTimeMs);
@@ -95,10 +97,11 @@ public class RetrievalMetricsService {
                 .mapToLong(Long::longValue)
                 .sum();
 
-        // Логируем итоги
-        logResults(searchType, k, testCases.size(), avgPrecision, avgRecall, meanMRR, avgNDCG);
+        // Логируем итоги с выводом целевого отеля в консоль
+        logResults(hotelKey, searchType, k, testCases.size(), avgPrecision, avgRecall, meanMRR, avgNDCG);
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("hotelKey", hotelKey);
         result.put("searchType", searchType);
         result.put("k", k);
         result.put("totalQuestions", testCases.size());
@@ -119,14 +122,9 @@ public class RetrievalMetricsService {
         return result;
     }
 
-    //сколько из k найденных документов релевантны
-    // Precision@K показывает, какая доля найденных документов среди первых K является релевантной.
     private double calculatePrecisionAtK(List<Boolean> relevance, int k) {
         int denominator = Math.min(k, relevance.size());
-
-        if (denominator == 0) {
-            return 0.0;
-        }
+        if (denominator == 0) return 0.0;
 
         long relevant = relevance.stream()
                 .limit(k)
@@ -136,16 +134,9 @@ public class RetrievalMetricsService {
         return (double) relevant / denominator;
     }
 
-    // Recall@K показывает, какая доля ключевой информации из эталонного ответа
-// была найдена в первых K возвращённых чанках.
-    private double calculateRecallAtK(List<Document> retrieved,
-                                      EvaluationDataset.TestCase testCase,
-                                      int k) {
+    private double calculateRecallAtK(List<Document> retrieved, EvaluationDataset.TestCase testCase, int k) {
         List<String> keywords = testCase.relevantKeywords();
-
-        if (keywords == null || keywords.isEmpty()) {
-            return 0.0;
-        }
+        if (keywords == null || keywords.isEmpty()) return 0.0;
 
         String combinedTopKText = retrieved.stream()
                 .limit(k)
@@ -163,22 +154,13 @@ public class RetrievalMetricsService {
         return (double) foundKeywords / keywords.size();
     }
 
-    // MRR (Mean Reciprocal Rank) Как быстро пользователь наткнется на первый правильный ответ?»
-    // Как считается: Берется место (ранг) первого релевантного документа.
-
     private double calculateReciprocalRank(List<Boolean> relevance) {
         for (int i = 0; i < relevance.size(); i++) {
-            if (relevance.get(i)) {
-                return 1.0 / (i + 1);
-            }
+            if (relevance.get(i)) return 1.0 / (i + 1);
         }
         return 0.0;
     }
 
-    //Вопрос: «Насколько хорошо отсортированы результаты?»
-    //
-    //Как считается: Она похожа на Precision, но с «штрафом» за позицию.
-    // Чем ниже находится полезный документ, тем меньше «очков» он приносит системе. При этом итоговый результат сравнивается с «идеальным» порядком.
     private double calculateNDCG(List<Boolean> relevance, int k) {
         double dcg = 0.0;
         for (int i = 0; i < Math.min(k, relevance.size()); i++) {
@@ -187,7 +169,6 @@ public class RetrievalMetricsService {
             }
         }
 
-        // Ideal DCG — все релевантные документы на первых позициях
         long relevantCount = relevance.stream().filter(b -> b).count();
         double idcg = 0.0;
         for (int i = 0; i < Math.min(k, relevantCount); i++) {
@@ -197,12 +178,10 @@ public class RetrievalMetricsService {
         return idcg == 0 ? 0.0 : dcg / idcg;
     }
 
-    // ─── Проверка релевантности документа ────────────────────
     private boolean isRelevant(Document doc, EvaluationDataset.TestCase testCase) {
         String text = doc.getText().toLowerCase();
         List<String> keywords = testCase.relevantKeywords();
 
-        // Документ релевантен если содержит хотя бы половину ключевых слов
         long matchCount = keywords.stream()
                 .filter(keyword -> text.contains(keyword.toLowerCase()))
                 .count();
@@ -210,14 +189,14 @@ public class RetrievalMetricsService {
         return matchCount >= Math.ceil(keywords.size() / 2.0);
     }
 
-    // ─── Логирование результатов ──────────────────────────────
-    private void logResults(String searchType, int k, int questionsCount,
-                            double precision, double recall,
-                            double mrr, double ndcg) {
+    // Добавлен вывод hotelKey в красивое лог-окно
+    private void logResults(String hotelKey, String searchType, int k, int questionsCount,
+                            double precision, double recall, double mrr, double ndcg) {
         log.info("""
     ╔══════════════════════════════════════════════════════╗
-    ║         МЕТРИКИ КАЧЕСТВА ПОИСКА                      ║
+    ║         МЕТРИКИ КАЧЕСТВА SaaS ПОИСКА                 ║
     ╠══════════════════════════════════════════════════════╣
+    ║ Отель (Тенант): {}
     ║ Тип поиска:    {}
     ║ K:             {}
     ║ Вопросов:      {}
@@ -228,7 +207,7 @@ public class RetrievalMetricsService {
     ║ NDCG@K:        {}
     ╚══════════════════════════════════════════════════════╝
     """,
-                searchType, k, questionsCount,
+                hotelKey, searchType, k, questionsCount,
                 String.format("%.4f", precision),
                 String.format("%.4f", recall),
                 String.format("%.4f", mrr),

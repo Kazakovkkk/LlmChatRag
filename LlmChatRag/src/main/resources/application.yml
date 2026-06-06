@@ -9,7 +9,7 @@ spring:
         rag-service:
           address: static://localhost:9092
           negotiation-type: plaintext
-        llm-service: # ← новый канал
+        llm-service:
           address: static://localhost:9093
           negotiation-type: plaintext
 logging:
@@ -18,4 +18,4 @@ logging:
     org.apache.pdfbox: ERROR
 llm:
   stream:
-    protocol: ${LLM_STREAM_PROTOCOL:rest} # rest или grpc
+    protocol: ${LLM_STREAM_PROTOCOL:grpc} # rest или grpc

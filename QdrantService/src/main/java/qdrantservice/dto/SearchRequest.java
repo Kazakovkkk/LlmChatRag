@@ -1,13 +1,18 @@
 package qdrantservice.dto;
 
+import java.util.List;
+
 public class SearchRequest {
+    private String hotelKey; // Обязательный ключ отеля
     private String query;
     private int limit = 5;
     private String searchType = "vector"; // "vector", "keyword", "hybrid"
-    private float threshold = 0.79f;
+    private float threshold = 0.70f;
 
     public SearchRequest() {}
 
+    public String getHotelKey() { return hotelKey; }
+    public void setHotelKey(String hotelKey) { this.hotelKey = hotelKey; }
     public String getQuery() { return query; }
     public void setQuery(String query) { this.query = query; }
     public int getLimit() { return limit; }

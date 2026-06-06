@@ -8,6 +8,6 @@ public class PageController {
 
     @GetMapping("/")
     public String index() {
-        return "chat"; // ← возвращает chat.html
+        return "chat";
     }
 }

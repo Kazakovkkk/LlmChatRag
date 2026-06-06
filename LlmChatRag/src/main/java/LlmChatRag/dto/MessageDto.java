@@ -1,7 +1,7 @@
 package LlmChatRag.dto;
 
 public class MessageDto {
-    private String role;  // "user" или "assistant"
+    private String role;
     private String content;
 
     public MessageDto() {}

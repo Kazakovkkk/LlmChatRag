@@ -1,107 +1,69 @@
 package qdrantservice.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import jakarta.annotation.PostConstruct;
+
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class BM25Tokenizer {
 
     private static final float K1 = 1.5f;
     private static final float B = 0.75f;
-
-    private final Map<String, Integer> documentFrequency = new ConcurrentHashMap<>();
-    private final AtomicInteger totalDocuments = new AtomicInteger(0);
-    private final Map<String, Integer> documentLengths = new ConcurrentHashMap<>();
-    private volatile double avgDocumentLength = 0.0;
-    private final AtomicLong totalLengthSum = new AtomicLong(0);
 
     private final BM25StatsRepository statsRepository;
 
     private static final Set<String> STOP_WORDS = Set.of(
             "и", "в", "на", "с", "по", "для", "не", "это", "как", "что",
             "а", "но", "или", "из", "о", "от", "до", "за", "при", "к",
-            "the", "a", "an", "in", "on", "at", "for", "to", "of", "is",
-            "are", "was", "were", "be", "been", "has", "have", "had"
+            "the", "a", "an", "in", "on", "at", "for", "to", "of", "is"
     );
 
-    public BM25Tokenizer(BM25StatsRepository statsRepository) {
-        this.statsRepository = statsRepository;
-    }
-    @PostConstruct
-    public void loadStats() {
-        log.info("Загрузка BM25 статистики из Qdrant");
-        statsRepository.loadGlobalStats().ifPresentOrElse(
-                stats -> {
-                    totalDocuments.set(stats.totalDocuments());
-                    avgDocumentLength = stats.avgDocumentLength();
-                    documentLengths.putAll(stats.documentLengths());
-                    log.info("BM25 глобальная статистика загружена | docs: {} | avgLen: {}",
-                            stats.totalDocuments(), stats.avgDocumentLength());
-                },
-                () -> log.info("BM25 статистика не найдена")
-        );
-        Map<String, Integer> df = statsRepository.loadDocumentFrequency();
-        if (!df.isEmpty()) {
-            documentFrequency.putAll(df);
-            log.info("BM25 document frequency загружен | {} терминов", df.size());
-        }
-        logStats();
-    }
-
-    public void indexDocument(String documentId, String text) {
+    public void indexDocument(String statsCollection, String documentId, String text) {
         List<String> terms = tokenizeToTerms(text);
         int docLength = terms.size();
 
-        documentLengths.put(documentId, docLength);
+        // 1. Сохраняем длину текущего документа
+        statsRepository.saveDocumentLength(statsCollection, documentId, docLength);
 
-        int totalDocs = totalDocuments.incrementAndGet();
-        totalLengthSum.addAndGet(docLength);
-        avgDocumentLength = (double) totalLengthSum.get() / totalDocs;
+        // 2. Считываем текущую глобальную метрику или создаем новую
+        var globalMetaOpt = statsRepository.loadGlobalStats(statsCollection);
+        int oldTotalDocs = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::totalDocuments).orElse(0);
+        double oldAvgLen = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::avgDocumentLength).orElse(0.0);
 
+        int newTotalDocs = oldTotalDocs + 1;
+        double newAvgLen = ((oldAvgLen * oldTotalDocs) + docLength) / newTotalDocs;
+
+        // 3. Апдейтим глобальные параметры
+        statsRepository.saveGlobalStats(statsCollection, newTotalDocs, newAvgLen);
+
+        // 4. Покомпонентно инкрементируем частоту уникальных слов
         Set<String> uniqueTerms = new HashSet<>(terms);
         for (String term : uniqueTerms) {
-            documentFrequency.merge(term, 1, Integer::sum);
+            int currentFreq = statsRepository.loadTermFrequency(statsCollection, term);
+            statsRepository.saveTermFrequency(statsCollection, term, currentFreq + 1);
         }
+    }
 
-
-        if (totalDocs % 10 == 0) {
-            persistStats();
+    public void clearCollectionStats(String statsCollection) {
+        log.warn("🗑️ Запрос на каскадное удаление метаданных BM25 из репозитория для коллекции: {}", statsCollection);
+        try {
+            statsRepository.deleteCollectionStats(statsCollection);
+            log.info("✅ Статистические матрицы BM25 для коллекции [{}] успешно очищены в БД", statsCollection);
+        } catch (Exception e) {
+            log.error("❌ Не удалось очистить BM25StatsRepository для {}: {}", statsCollection, e.getMessage());
+            // Не выбрасываем исключение жестко, чтобы не блокировать очистку самого Qdrant, если БД пуста
         }
-
-        log.debug("Индексирован документ {} | {} терминов | avgDocLen: {}",
-                documentId, docLength, avgDocumentLength);
     }
 
-    public void persistStats() {
-        log.info("Сохраняем BM25 статистику в Qdrant...");
-        statsRepository.saveGlobalStats(
-                totalDocuments.get(),
-                avgDocumentLength,
-                new HashMap<>(documentLengths)
-        );
-        statsRepository.saveDocumentFrequency(new HashMap<>(documentFrequency));
-        log.info("BM25 статистика сохранена");
-    }
-
-    public Map<Integer, Float> tokenize(String text) {
-        return tokenizeWithBM25(text, true);
-    }
-
-    public Map<Integer, Float> tokenizeQuery(String text) {
-        return tokenizeWithBM25(text, false);
-    }
-
-    private Map<Integer, Float> tokenizeWithBM25(String text, boolean isDocument) {
+    public Map<Integer, Float> tokenizeWithBM25(String statsCollection, String text, String documentId, boolean isDocument) {
         List<String> terms = tokenizeToTerms(text);
         if (terms.isEmpty()) return Map.of();
 
-        int docLength = terms.size();
+        int docLength = isDocument ? terms.size() : statsRepository.loadDocumentLength(statsCollection, documentId);
 
         Map<String, Integer> termFreq = new HashMap<>();
         for (String term : terms) {
@@ -109,20 +71,21 @@ public class BM25Tokenizer {
         }
 
         Map<Integer, Float> sparseVector = new HashMap<>();
-        int N = Math.max(totalDocuments.get(), 1);
-        double avgDL = Math.max(avgDocumentLength, 1.0);
+        var globalMeta = statsRepository.loadGlobalStats(statsCollection).orElse(new BM25StatsRepository.GlobalStatsMeta(1, 1.0));
+
+        int N = Math.max(globalMeta.totalDocuments(), 1);
+        double avgDL = Math.max(globalMeta.avgDocumentLength(), 1.0);
 
         for (Map.Entry<String, Integer> entry : termFreq.entrySet()) {
             String term = entry.getKey();
             int tf = entry.getValue();
 
-            int df = documentFrequency.getOrDefault(term, 0);
+            int df = statsRepository.loadTermFrequency(statsCollection, term);
             double idf = Math.log((N - df + 0.5) / (df + 0.5) + 1.0);
 
             float score;
             if (isDocument) {
-                double tfNorm = (tf * (K1 + 1))
-                        / (tf + K1 * (1 - B + B * docLength / avgDL));
+                double tfNorm = (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * docLength / avgDL));
                 score = (float) (idf * tfNorm);
             } else {
                 score = (float) idf;
@@ -133,7 +96,6 @@ public class BM25Tokenizer {
                 sparseVector.merge(index, score, Float::sum);
             }
         }
-
         return sparseVector;
     }
 
@@ -152,7 +114,7 @@ public class BM25Tokenizer {
     }
 
     private String stem(String word) {
-        if (word.endsWith("ами") || word.endsWith("ями"))
+        if (word.endsWith("ами") || word.endsWith("ями") || word.endsWith("ыми"))
             return word.substring(0, word.length() - 3);
         if (word.endsWith("ого") || word.endsWith("его"))
             return word.substring(0, word.length() - 3);
@@ -183,13 +145,4 @@ public class BM25Tokenizer {
         return word;
     }
 
-    public void logStats() {
-        log.info("BM25 статистика | Документов: {} | Уникальных терминов: {} | avgDocLen: {}",
-                totalDocuments.get(),
-                documentFrequency.size(),
-                String.format("%.1f", avgDocumentLength));
-    }
-    public int getTotalDocuments() { return totalDocuments.get(); }
-    public double getAvgDocumentLength() { return avgDocumentLength; }
-    public Map<String, Integer> getDocumentFrequency() { return documentFrequency; }
 }

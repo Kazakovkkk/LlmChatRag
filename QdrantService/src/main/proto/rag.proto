@@ -8,15 +8,16 @@ option java_multiple_files = true;
 service RagService {
   rpc SearchSimilar (SearchRequest) returns (SearchResponse);
   rpc UploadDocument (UploadRequest) returns (UploadResponse);
+
+  // Новые методы для CRUD-операций админа над базой знаний
+  rpc GetChunks (GetChunksRequest) returns (GetChunksResponse);
+  rpc UpdateChunk (UpdateChunkRequest) returns (UpdateChunkResponse);
 }
 
 message SearchRequest {
-  string query = 1;
-  int32 limit = 2;
-}
-
-message SearchResponse {
-  repeated DocumentProto documents = 1;
+  string hotel_key = 1;
+  string query = 2;
+  int32 limit = 3;
 }
 
 message DocumentProto {
@@ -26,10 +27,18 @@ message DocumentProto {
   map<string, string> metadata = 4;
 }
 
+message SearchResponse {
+  repeated DocumentProto documents = 1;
+}
+
+// Обнови сообщение UploadRequest в твоем .proto файле:
+
 message UploadRequest {
-  bytes pdf_data = 1;
-  string filename = 2;
-  repeated string tags = 3;
+  string hotel_key = 1;
+  bytes pdf_data = 2;
+  string filename = 3;
+  repeated string tags = 4;
+  string mode = 5;          // <-- ДОБАВЛЕНО: Режим обработки (APPEND или OVERWRITE)
 }
 
 message UploadResponse {
@@ -37,4 +46,26 @@ message UploadResponse {
   string message = 2;
   string filename = 3;
   string tag = 4;
+}
+
+message GetChunksRequest {
+  string hotel_key = 1;
+  int32 limit = 2;
+  string offset_id = 3; // Для пагинации больших баз знаний
+}
+
+message GetChunksResponse {
+  repeated DocumentProto chunks = 1;
+  string next_offset_id = 2;
+}
+
+message UpdateChunkRequest {
+  string hotel_key = 1;
+  string chunk_id = 2; // UUID конкретной точки в Qdrant
+  string new_text = 3;
+}
+
+message UpdateChunkResponse {
+  bool success = 1;
+  string message = 2;
 }

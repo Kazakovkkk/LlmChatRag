@@ -4,13 +4,16 @@ import LlmChatRag.dto.AnswerRequest;
 import LlmChatRag.dto.DocumentDto;
 import LlmChatRag.dto.MessageDto;
 import LlmChatRag.dto.PreprocessedQuestion;
-import LlmChatRag.dto.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,30 +27,36 @@ public class RagChatService {
 
     //private final RestClient qdrantRestClient;
     private final RestClient llmRestClient;
+    private final RestClient adminRestClient;
     private final LlmStreamRouter llmStreamRouter;
     private final DocumentRankingService rankingService;
-    private final SearchRouter searchRouter; // ← вместо ragGrpcClient
+    private final SearchRouter searchRouter;// ← вместо ragGrpcClient
+    private final ObjectMapper objectMapper;
 
     public RagChatService(
             @Qualifier("llmRestClient") RestClient llmRestClient,
+            @Qualifier("adminRestClient") RestClient adminRestClient,
             DocumentRankingService rankingService,
             SearchRouter searchRouter,
-            LlmStreamRouter llmStreamRouter
+            LlmStreamRouter llmStreamRouter,
+            ObjectMapper objectMapper
     ) {
         this.llmRestClient = llmRestClient;
+        this.adminRestClient = adminRestClient;
         this.rankingService = rankingService;
         this.searchRouter = searchRouter;
         this.llmStreamRouter = llmStreamRouter;
+        this.objectMapper = objectMapper;
     }
 
-    public String chat(String userQuestion, List<MessageDto> history) {
+    public String chat(String userQuestion, String hotelKey, List<MessageDto> history) {
         try {
             // Шаг 1: Препроцессинг вопроса → llm-service
             PreprocessedQuestion processed = preprocessQuestion(userQuestion, history);
             log.info("Preprocessed question: {}", processed.getNormalized());
 
             // Шаг 2: Поиск документов → qdrant-service
-            List<DocumentDto> documents = searchDocuments(processed);
+            List<DocumentDto> documents = searchDocuments(hotelKey, processed);
             log.info("Found {} documents", documents.size());
 
             // Шаг 3: Ранжирование
@@ -84,24 +93,28 @@ public class RagChatService {
                 .body(PreprocessedQuestion.class);
     }
 
-    public Flux<String> chatStream(String userQuestion, List<MessageDto> history, String timestamp) {
+    public Flux<String> chatStream(String hotelKey, String chatId, String userQuestion, List<MessageDto> history, String timestamp) {
+        // Твой оригинальный лог замера времени старта
         long totalStart = System.currentTimeMillis();
+
+        // Локальный буфер для сборки полного текста ответа ИИ (нужен для Postgres лога)
+        StringBuilder fullBotResponse = new StringBuilder();
 
         // Для хранения времени каждого шага
         long[] timings = new long[4]; // [преп, поиск, ранжирование, подготовка]
 
         try {
             long t1 = System.currentTimeMillis();
+            syncMessageToAdminStoreAsync(hotelKey, chatId, "user", userQuestion);
             userQuestion = userQuestion.replaceAll("[\\p{So}\\p{Cn}]", "");
-            PreprocessedQuestion processed = new PreprocessedQuestion();
-            processed =  preprocessQuestion(userQuestion, history);
+            PreprocessedQuestion processed =  preprocessQuestion(userQuestion, history);
             processed.setNormalized(userQuestion);
             log.info("Вопрос пользователя: {} . Нормализованный вопрос: {} Альтернативные вопросы: {}",
                     userQuestion, processed.getNormalized(), processed.getAlternatives());
             timings[0] = System.currentTimeMillis() - t1;
 
             long t2 = System.currentTimeMillis();
-            List<DocumentDto> documents = searchDocuments(processed);
+            List<DocumentDto> documents = searchDocuments(hotelKey, processed);
             timings[1] = System.currentTimeMillis() - t2;
 
             long t3 = System.currentTimeMillis();
@@ -115,6 +128,7 @@ public class RagChatService {
             timings[3] = System.currentTimeMillis() - totalStart;
 
             if (context.isBlank() || topDocs.isEmpty()) {
+                String fallbackMsg = "Информация по данному вопросу временно отсутствует в базе знаний отеля.";
                 log.info("""
                         ╔══════════════════════════════════════╗
                         ║         ИТОГИ RAG PIPELINE           ║
@@ -127,12 +141,22 @@ public class RagChatService {
                         ╚══════════════════════════════════════╝
                         """,
                         timings[0], searchRouter.getProtocol().toUpperCase(), timings[1], timings[2], timings[3]);
+                syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fallbackMsg);
                 return Flux.just("{\"token\":\"Информация по данному вопросу отсутствует в базе знаний.\"}");
             }
 
             long streamStart = System.currentTimeMillis();
 
             return llmStreamRouter.stream(new AnswerRequest(userQuestion, context, history, timestamp))
+                    .doOnNext(tokenMapJson -> {
+                        // Твои логи на каждый токен остаются в llmStreamRouter,
+                        // а здесь мы просто аккумулируем строку для базы данных
+                        try {
+                            JsonNode node = objectMapper.readTree(tokenMapJson);
+                            String token = node.path("token").asText("");
+                            fullBotResponse.append(token);
+                        } catch (Exception ignored) {}
+                    })
                     .doOnComplete(() -> {
                         long streamTime = System.currentTimeMillis() - streamStart;
                         log.info("""
@@ -152,6 +176,7 @@ public class RagChatService {
                                 timings[2], timings[3],
                                 llmStreamRouter.getProtocol().toUpperCase(), streamTime,
                                 System.currentTimeMillis() - totalStart);
+                        syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fullBotResponse.toString());
                     });
 
         } catch (Exception e) {
@@ -160,20 +185,17 @@ public class RagChatService {
         }
     }
 
-    private List<DocumentDto> searchDocuments(PreprocessedQuestion processed) {
+    private List<DocumentDto> searchDocuments(String hotelKey, PreprocessedQuestion processed) {
         List<String> allQueries = new ArrayList<>();
         allQueries.add(processed.getNormalized());
         if (processed.getAlternatives() != null){
             allQueries.addAll(processed.getAlternatives());
         }
-
-
         List<DocumentDto> allDocuments = new ArrayList<>();
         for (String query : allQueries) {
             try {
                 // ← теперь через роутер
-                List<DocumentDto> docs = searchRouter.search(query, 5);
-
+                List<DocumentDto> docs = searchRouter.search(hotelKey, query, 5);
                 if (docs != null && !docs.isEmpty()) {
                     log.info("=== Запрос: '{}' | Найдено документов: {} ===", query, docs.size());
                     docs.forEach(doc -> log.info(
@@ -203,5 +225,50 @@ public class RagChatService {
                 .body(new AnswerRequest(question, context))
                 .retrieve()
                 .body(String.class);
+    }
+    private void syncMessageToAdminStoreAsync(String hotelKey, String chatId, String role, String content) {
+        Flux.just(Map.of("hotelKey", hotelKey, "chatId", chatId, "role", role, "content", content))
+                .subscribeOn(Schedulers.boundedElastic()) // Выполняем в фоне, чтобы не тормозить отдачу токенов гостю
+                .subscribe(payload -> {
+                    try {
+                        adminRestClient.post()
+                                .uri("/admin/chats/sync")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body(payload)
+                                .retrieve()
+                                .toBodilessEntity();
+                        log.debug("♻️ Лог [{}] успешно синхронизирован с базой данных AdminPanel", role);
+                    } catch (Exception e) {
+                        log.error("⚠️ Не удалось отправить реплику в AdminPanel (база данных аудита недоступна): {}", e.getMessage());
+                    }
+                });
+    }
+    // Добавь этот метод в RagChatService.java
+    public List<MessageDto> getChatHistoryFromAdmin(String hotelKey, String chatId) {
+        try {
+            // Делаем запрос к панели администратора для выгрузки логов конкретной сессии
+            List<Map<String, String>> rawHistory = adminRestClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/admin/chats/history/single") // Предполагаем этот эндпоинт в админке
+                            .queryParam("hotelKey", hotelKey)
+                            .queryParam("chatId", chatId)
+                            .build())
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<>() {});
+
+            if (rawHistory == null) return List.of();
+
+            // Маппим сырые данные из БД в объекты MessageDto для фронтенда
+            return rawHistory.stream().map(raw -> {
+                MessageDto dto = new MessageDto();
+                dto.setRole(raw.get("role"));
+                dto.setContent(raw.get("content"));
+                return dto;
+            }).collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("⚠️ Не удалось восстановить чат из AdminPanel: {}", e.getMessage());
+            return List.of(); // Если админка или БД недоступны, возвращаем пустой список
+        }
     }
 }

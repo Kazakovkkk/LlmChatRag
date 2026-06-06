@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Console</title>
+    <link rel="stylesheet" th:href="@{/admin/admin.css}" href="/admin/admin.css">
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Админ</h2>
+    <div style="font-size: 11px; color:#8899aa; margin-bottom:15px;">Отель: <b id="tenantLabel">cosmos</b></div>
+    <button class="tab-btn active" id="btn-uploadTab" onclick="switchTab('uploadTab')">Добавить регламент</button>
+    <button class="tab-btn" id="btn-knowledgeTab" onclick="switchTab('knowledgeTab')">Изменить регламент</button>
+    <button class="tab-btn" id="btn-historyTab" onclick="switchTab('historyTab')">Аудит чатов</button>
+</div>
+
+<div class="main-content">
+    <div id="uploadTab" class="tab-section">
+        <div class="card">
+            <h3>Загрузить новый регламент (PDF)</h3>
+
+            <div id="dropZone" class="drop-zone">
+                <p>Перетащите PDF-файл сюда или нажмите для выбора</p>
+                <input type="file" id="pdfFile" accept=".pdf" style="display: none;">
+                <div id="fileInfo" class="file-info" style="display: none;">
+                    🎯 Выбран файл: <span id="fileNameDisplay"></span>
+                </div>
+            </div>
+
+            <div class="mode-selector">
+                <p style="margin-bottom: 8px; font-weight: bold; font-size: 14px;">Режим обработки информации:</p>
+                <label class="radio-label">
+                    <input type="radio" name="uploadMode" value="APPEND" checked>
+                    <span><b>Добавить (Append)</b> — дописать новые чанки к текущей базе знаний</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="uploadMode" value="OVERWRITE">
+                    <span><b>Перезаписать (Overwrite)</b> — полностью стереть старые регламенты отеля в Qdrant</span>
+                </label>
+            </div>
+
+            <button class="btn" style="margin-top: 15px;" onclick="uploadPdf()">Загрузить информацию в базу данных</button>
+        </div>
+    </div>
+
+    <div id="knowledgeTab" class="tab-section" style="display: none;">
+        <div class="card">
+            <h3>Изменить данные в базе знаний</h3>
+
+            <div class="search-box">
+                <input type="text" id="chunkSearchInput" placeholder="Поиск по ключевым словам внутри чанков..." oninput="filterChunks()">
+            </div>
+
+            <div id="chunksContainer">Загрузка карточек чанков...</div>
+        </div>
+    </div>
+
+    <div id="historyTab" class="tab-section" style="display: none;">
+        <div class="card">
+            <h3>Диалоги пользователей</h3>
+            <div id="chatsContainer">Загрузка сессий...</div>
+        </div>
+    </div>
+</div>
+
+<script th:src="@{/admin/admin.js}" src="/admin/admin.js"></script>
+</body>
+</html>

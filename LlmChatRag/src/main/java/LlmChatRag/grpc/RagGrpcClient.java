@@ -8,8 +8,8 @@ import org.springframework.grpc.client.GrpcChannelFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
+
 @Slf4j
 @Service
 public class RagGrpcClient {
@@ -21,8 +21,10 @@ public class RagGrpcClient {
         this.stub = RagServiceGrpc.newBlockingStub(channel);
     }
 
-    public List<DocumentDto> searchSimilar(String query, int limit) {
+    public List<DocumentDto> searchSimilar(String hotelKey, String query, int limit) {
+        // Сборка мультитенантного gRPC-запроса с передачей hotelKey
         SearchRequest request = SearchRequest.newBuilder()
+                .setHotelKey(hotelKey)
                 .setQuery(query)
                 .setLimit(limit)
                 .build();
@@ -40,28 +42,5 @@ public class RagGrpcClient {
         dto.setText(proto.getText());
         dto.setScore(proto.getScore());
         return dto;
-    }
-    // grpc/RagGrpcClient.java — добавляем метод uploadDocument
-    public Map<String, Object> uploadDocument(byte[] pdfBytes, String filename) {
-        long start = System.currentTimeMillis();
-        log.info("⏱ gRPC upload начало | файл: '{}'", filename);
-
-        UploadRequest request = UploadRequest.newBuilder()
-                .setPdfData(com.google.protobuf.ByteString.copyFrom(pdfBytes))
-                .setFilename(filename)
-                .build();
-
-        UploadResponse response = stub.uploadDocument(request);
-
-        long elapsed = System.currentTimeMillis() - start;
-        log.info("⏱ gRPC upload завершён | {} мс | файл: '{}'", elapsed, filename);
-
-        return Map.of(
-                "status", response.getSuccess() ? "success" : "error",
-                "message", response.getMessage(),
-                "file", response.getFilename(),
-                "tag", response.getTag(),
-                "transferTimeMs", elapsed
-        );
     }
 }
