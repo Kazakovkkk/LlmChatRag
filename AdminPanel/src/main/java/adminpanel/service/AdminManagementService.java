@@ -1,6 +1,7 @@
 package adminpanel.service;
 
-import adminpanel.dto.DocumentDto;
+import adminpanel.dto.*;
+import adminpanel.grpc.HotelManagementGrpcClient;
 import adminpanel.grpc.RagGrpcClient;
 import adminpanel.model.Chat;
 import adminpanel.model.Message;
@@ -27,7 +28,7 @@ public class AdminManagementService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final RagGrpcClient ragGrpcClient;
-
+    private final HotelManagementGrpcClient hotelManagementGrpcClient;
     // Автоматическое создание тестового админа при старте приложения
     @PostConstruct
     public void initDefaultAdmin() {
@@ -113,5 +114,36 @@ public class AdminManagementService {
                 .filter(chat -> chat.getHotelKey().equalsIgnoreCase(hotelKey.trim()))
                 .map(Chat::getMessages) // Вытаскиваем только сообщения этого чанка
                 .orElse(List.of());     // Если чат еще не создан, возвращаем пустой список
+    }
+    public List<GuestManagementDto> getHotelGuests(String hotelKey) {
+        return hotelManagementGrpcClient.fetchGuests(hotelKey);
+    }
+
+    public boolean saveHotelGuest(String hotelKey, GuestManagementDto dto) {
+        return hotelManagementGrpcClient.updateGuest(hotelKey, dto);
+    }
+
+    public List<StaffManagementDto> getHotelStaffList(String hotelKey) {
+        return hotelManagementGrpcClient.fetchStaff(hotelKey);
+    }
+
+    public boolean saveHotelStaff(String hotelKey, StaffManagementDto dto) {
+        return hotelManagementGrpcClient.updateStaff(hotelKey, dto);
+    }
+
+    public List<MenuItemManagementDto> getHotelMenu(String hotelKey) {
+        return hotelManagementGrpcClient.fetchMenu(hotelKey);
+    }
+
+    public boolean updateFoodStock(String hotelKey, String itemId, int stockQuantity) {
+        return hotelManagementGrpcClient.updateMenuStock(hotelKey, itemId, stockQuantity);
+    }
+
+    public List<TicketManagementDto> getHotelActionTickets(String hotelKey) {
+        return hotelManagementGrpcClient.fetchTickets(hotelKey);
+    }
+
+    public boolean changeTicketStatus(String ticketId, String newStatus) {
+        return hotelManagementGrpcClient.updateTicketStatus(ticketId, newStatus);
     }
 }

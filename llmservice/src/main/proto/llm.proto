@@ -6,7 +6,11 @@ option java_package = "com.example.grpc.llm";
 option java_multiple_files = true;
 
 service LlmService {
+  // Стриминг ответа гостю (уже реализован у вас)
   rpc AnswerStream (AnswerStreamRequest) returns (stream AnswerStreamResponse);
+
+  // НОВЫЙ МЕТОД: gRPC-аналог эндпоинта /llm/preprocess для классификации интентов
+  rpc PreprocessQuestion (PreprocessGrpcRequest) returns (PreprocessGrpcResponse);
 }
 
 message MessageProto {
@@ -23,4 +27,21 @@ message AnswerStreamRequest {
 
 message AnswerStreamResponse {
   string token = 1;
+}
+
+// --- НОВЫЕ СТРУКТУРЫ ДЛЯ КЛАССИФИКАЦИИ НАМЕРЕНИЙ И ПРЕПРОЦЕССИНГА ---
+
+message PreprocessGrpcRequest {
+  string question = 1;
+  repeated MessageProto history = 2;
+}
+
+message PreprocessGrpcResponse {
+  string intent_type = 1;             // "SEARCH" (дефолтный RAG) или "ACTION" (транзакционный агент)
+  string action_name = 2;             // Имя экшена, если intent_type == "ACTION" (например, "ORDER_FOOD")
+  map<string, string> parameters = 3; // Сущности, извлеченные из текста (например: {"dish": "пицца", "drink": "кола"})
+
+  // Поля для ветки SEARCH (сохраняем обратную совместимость с вашим RAG-поиском)
+  string normalized = 4;
+  repeated string alternatives = 5;
 }

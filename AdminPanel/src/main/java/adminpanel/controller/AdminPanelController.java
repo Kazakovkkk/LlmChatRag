@@ -11,6 +11,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import adminpanel.dto.GuestManagementDto;
+import adminpanel.dto.StaffManagementDto;
+import adminpanel.dto.MenuItemManagementDto;
+import adminpanel.dto.TicketManagementDto;
 
 import java.util.List;
 import java.util.Map;
@@ -124,5 +128,125 @@ public class AdminPanelController {
                 payload.get("content")
         );
         return ResponseEntity.ok().build();
+    }
+    @GetMapping("/management/guests")
+    @ResponseBody
+    public ResponseEntity<List<GuestManagementDto>> getGuests(HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        List<GuestManagementDto> guests = managementService.getHotelGuests(hotelKey);
+        return ResponseEntity.ok(guests);
+    }
+
+    @PutMapping("/management/guests")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> updateGuest(@RequestBody GuestManagementDto dto, HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        boolean success = managementService.saveHotelGuest(hotelKey, dto);
+        if (success) {
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Данные гостя успешно изменены"));
+        }
+        return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении гостя"));
+    }
+
+// ===================================================================
+// 2. УПРАВЛЕНИЕ ВКЛАДКОЙ "ПЕРСОНАЛ"
+// ===================================================================
+
+    @GetMapping("/management/staff")
+    @ResponseBody
+    public ResponseEntity<List<StaffManagementDto>> getStaff(HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        List<StaffManagementDto> staff = managementService.getHotelStaffList(hotelKey);
+        return ResponseEntity.ok(staff);
+    }
+
+    @PutMapping("/management/staff")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> updateStaff(@RequestBody StaffManagementDto dto, HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        boolean success = managementService.saveHotelStaff(hotelKey, dto);
+        if (success) {
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Статус сотрудника успешно изменен"));
+        }
+        return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении персонала"));
+    }
+
+// ===================================================================
+// 3. УПРАВЛЕНИЕ ВКЛАДКОЙ "МЕНЮ И СКЛАД" (Цена защищена на уровне gRPC)
+// ===================================================================
+
+    @GetMapping("/management/menu")
+    @ResponseBody
+    public ResponseEntity<List<MenuItemManagementDto>> getMenu(HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        List<MenuItemManagementDto> menu = managementService.getHotelMenu(hotelKey);
+        return ResponseEntity.ok(menu);
+    }
+
+    @PutMapping("/management/menu/stock/{id}")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> updateStock(
+            @PathVariable("id") String itemId,
+            @RequestBody Map<String, Integer> payload, // Принимаем только {"stockQuantity": 15}
+            HttpSession session) {
+
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        Integer newStock = payload.get("stockQuantity");
+        if (newStock == null || newStock < 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Некорректное количество товара"));
+        }
+
+        boolean success = managementService.updateFoodStock(hotelKey, itemId, newStock);
+        if (success) {
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Складские остатки обновлены"));
+        }
+        return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении склада"));
+    }
+
+// ===================================================================
+// 4. УПРАВЛЕНИЕ ВКЛАДКОЙ "ЖУРНАЛ ЗАЯВОК ИИ" (Цена чека защищена от изменений)
+// ===================================================================
+
+    @GetMapping("/management/tickets")
+    @ResponseBody
+    public ResponseEntity<List<TicketManagementDto>> getTickets(HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        List<TicketManagementDto> tickets = managementService.getHotelActionTickets(hotelKey);
+        return ResponseEntity.ok(tickets);
+    }
+
+    @PutMapping("/management/tickets/{id}/status")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> updateTicketStatus(
+            @PathVariable("id") String ticketId,
+            @RequestBody Map<String, String> payload, // Принимаем только {"status": "COMPLETED"}
+            HttpSession session) {
+
+        if (session.getAttribute("hotelKey") == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        String newStatus = payload.get("status");
+        if (newStatus == null || newStatus.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Статус не может быть пустым"));
+        }
+
+        boolean success = managementService.changeTicketStatus(ticketId, newStatus);
+        if (success) {
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Статус заявки успешно изменен"));
+        }
+        return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при изменении статуса заявки"));
     }
 }

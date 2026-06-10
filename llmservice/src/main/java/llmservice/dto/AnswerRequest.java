@@ -6,7 +6,7 @@ public class AnswerRequest {
     private String question;
     private String context;
     private List<MessageDto> history;
-    private String timestamp;// ← добавили
+    private String timestamp;
 
     public AnswerRequest() {}
     public String getQuestion() { return question; }

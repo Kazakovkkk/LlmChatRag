@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package management;
+
+option java_package = "com.example.grpc.management";
+option java_multiple_files = true;
+
+// Сервис бэк-офисного управления данными отеля для AdminPanel
+service HotelManagementService {
+  // 1. Управление гостями
+  rpc GetGuests (GetGuestsRequest) returns (GetGuestsResponse);
+  rpc UpdateGuest (UpdateGuestRequest) returns (ManagementActionResponse);
+
+  // 2. Управление персоналом
+  rpc GetStaff (GetStaffRequest) returns (GetStaffResponse);
+  rpc UpdateStaff (UpdateStaffRequest) returns (ManagementActionResponse);
+
+  // 3. Управление меню (Цену менять ЗАПРЕЩЕНО, только остатки склада)
+  rpc GetMenu (GetMenuRequest) returns (GetMenuResponse);
+  rpc UpdateMenuStock (UpdateMenuStockRequest) returns (ManagementActionResponse);
+
+  // 4. Журнал заявок ИИ (Менять можно ТОЛЬКО статус)
+  rpc GetTickets (GetTicketsRequest) returns (GetTicketsResponse);
+  rpc UpdateTicketStatus (UpdateTicketStatusRequest) returns (ManagementActionResponse);
+}
+
+// --- Общие структуры ответов ---
+message ManagementActionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// --- Модели данных для таблиц админки ---
+
+message GuestManagementProto {
+  string id = 1;
+  string chat_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string room_number = 5;
+  string passport_data_encrypted = 6;
+  string status = 7;
+}
+
+message StaffManagementProto {
+  string id = 1;
+  string name = 2;
+  string role = 3;
+  string status = 4;
+}
+
+message MenuItemManagementProto {
+  string id = 1;
+  string name = 2;
+  double price = 3;
+  int32 stock_quantity = 4;
+}
+
+message TicketManagementProto {
+  string id = 1;
+  string guest_name = 2;
+  string room_number = 3;
+  string ticket_type = 4;
+  string status = 5;
+  string assigned_staff_name = 6;
+  double total_price = 7;
+  string created_at = 8;
+}
+
+// --- Структуры Запросов и Ответов ---
+
+message GetGuestsRequest { string hotel_key = 1; }
+message GetGuestsResponse { repeated GuestManagementProto guests = 1; }
+message UpdateGuestRequest { string hotel_key = 1; GuestManagementProto guest = 2; }
+
+message GetStaffRequest { string hotel_key = 1; }
+message GetStaffResponse { repeated StaffManagementProto staff = 1; }
+message UpdateStaffRequest { string hotel_key = 1; StaffManagementProto staff = 2; }
+
+message GetMenuRequest { string hotel_key = 1; }
+message GetMenuResponse { repeated MenuItemManagementProto menu_items = 1; }
+message UpdateMenuStockRequest {
+  string hotel_key = 1;
+  string item_id = 2;
+  int32 stock_quantity = 3; // Только количество товара
+}
+
+message GetTicketsRequest { string hotel_key = 1; }
+message GetTicketsResponse { repeated TicketManagementProto tickets = 1; }
+message UpdateTicketStatusRequest {
+  string ticket_id = 1;
+  string new_status = 2; // 'COMPLETED', 'REJECTED', 'IN_PROGRESS'
+}

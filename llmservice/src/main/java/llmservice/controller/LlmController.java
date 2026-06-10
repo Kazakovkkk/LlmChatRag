@@ -14,7 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
-//ollama run llama3:8b --keepalive 24h
 @RestController
 @RequestMapping("/llm")
 @RequiredArgsConstructor
@@ -32,7 +31,6 @@ public class LlmController {
         );
     }
 
-    // ← SSE эндпоинт — возвращает Flux<String>
     @PostMapping(value = "/answer/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> answerStream(@RequestBody AnswerRequest request) {
@@ -43,21 +41,18 @@ public class LlmController {
                 request.getTimestamp()
         ).map(token -> {
             try {
-                // Оборачиваем в JSON чтобы пробелы не потерялись
                 return objectMapper.writeValueAsString(Map.of("token", token));
             } catch (Exception e) {
                 return "{\"token\":\"\"}";
             }
         });
     }
-
-    // Оставим обычный эндпоинт тоже
     @PostMapping("/answer")
-    public String answer(@RequestBody AnswerRequest request) {
+    public Mono<String> answer(@RequestBody AnswerRequest request) {
         return answerService.generateAnswer(
                 request.getQuestion(),
                 request.getContext()
-        ).block();
+        );
     }
 
     @GetMapping("/health")

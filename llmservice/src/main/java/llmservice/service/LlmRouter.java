@@ -14,8 +14,9 @@ import java.util.List;
 public class LlmRouter {
 
     private final OllamaChatService ollamaService;
-    private final GeminiChatService geminiService;
     private final GroqChatService groqService;
+    private final LmStudioChatService lmStudioService;
+    private final GigaChatService gigachatService; // <-- ДОБАВЛЕНО
 
     @Value("${llm.provider:ollama}")
     private String provider;
@@ -24,35 +25,42 @@ public class LlmRouter {
     private String preprocessProvider;
 
     public LlmRouter(OllamaChatService ollamaService,
-                     GeminiChatService geminiService,
-                     GroqChatService groqService) {
+
+                     GroqChatService groqService,
+                     LmStudioChatService lmStudioService,
+                     GigaChatService gigachatService) { // <-- ИНЖЕКТИРУЕМ
         this.ollamaService = ollamaService;
-        this.geminiService = geminiService;
         this.groqService = groqService;
+        this.lmStudioService = lmStudioService;
+        this.gigachatService = gigachatService;
     }
 
     public Mono<String> chat(String prompt) {
         long start = System.currentTimeMillis();
         log.info("⏱ LLM chat начало | Provider: {}", preprocessProvider);
         return switch (preprocessProvider) {
-            case "gemini" -> geminiService.chat(prompt)
-                    .doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
             case "groq" -> groqService.chat(prompt)
+                    .doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "lmstudio" -> lmStudioService.chat(prompt)
+                    .doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "gigachat" -> gigachatService.chat(prompt) // <-- КЕЙС ДЛЯ ПРЕПРОЦЕССИНГА
                     .doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
             default -> ollamaService.chat(prompt)
                     .doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
         };
     }
 
-    public Flux<String> chatStream(String prompt, List<MessageDto> history) {
+    public Flux<String> chatStream(String prompt) {
         long start = System.currentTimeMillis();
         log.info("⏱ LLM stream начало | Provider: {}", provider);
         return switch (provider) {
-            case "gemini" -> geminiService.chatStream(prompt, history)
+            case "groq" -> groqService.chatStream(prompt)
                     .doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
-            case "groq" -> groqService.chatStream(prompt, history)
+            case "lmstudio" -> lmStudioService.chatStream(prompt)
                     .doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
-            default -> ollamaService.chatStream(prompt, history)
+            case "gigachat" -> gigachatService.chatStream(prompt) // <-- КЕЙС ДЛЯ СТРИМИНГА ГОСТЮ
+                    .doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
+            default -> ollamaService.chatStream(prompt)
                     .doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
         };
     }

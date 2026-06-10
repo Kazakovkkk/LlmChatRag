@@ -1,9 +1,6 @@
 package LlmChatRag.service;
 
-import LlmChatRag.dto.AnswerRequest;
-import LlmChatRag.dto.DocumentDto;
-import LlmChatRag.dto.MessageDto;
-import LlmChatRag.dto.PreprocessedQuestion;
+import LlmChatRag.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +29,8 @@ public class RagChatService {
     private final DocumentRankingService rankingService;
     private final SearchRouter searchRouter;// ← вместо ragGrpcClient
     private final ObjectMapper objectMapper;
+    private final LlmPreprocessorRouter preprocessorRouter; // ← Вместо прямого RestClient llmRestClient для препроцессинга
+    private final HotelActionRouter hotelActionRouter;     // ← Добавляем роутер действий
 
     public RagChatService(
             @Qualifier("llmRestClient") RestClient llmRestClient,
@@ -39,6 +38,8 @@ public class RagChatService {
             DocumentRankingService rankingService,
             SearchRouter searchRouter,
             LlmStreamRouter llmStreamRouter,
+            LlmPreprocessorRouter preprocessorRouter, // Инжект
+            HotelActionRouter hotelActionRouter,     // Инжект
             ObjectMapper objectMapper
     ) {
         this.llmRestClient = llmRestClient;
@@ -46,6 +47,8 @@ public class RagChatService {
         this.rankingService = rankingService;
         this.searchRouter = searchRouter;
         this.llmStreamRouter = llmStreamRouter;
+        this.preprocessorRouter = preprocessorRouter;
+        this.hotelActionRouter = hotelActionRouter;
         this.objectMapper = objectMapper;
     }
 
@@ -94,31 +97,61 @@ public class RagChatService {
     }
 
     public Flux<String> chatStream(String hotelKey, String chatId, String userQuestion, List<MessageDto> history, String timestamp) {
-        // Твой оригинальный лог замера времени старта
         long totalStart = System.currentTimeMillis();
-
-        // Локальный буфер для сборки полного текста ответа ИИ (нужен для Postgres лога)
         StringBuilder fullBotResponse = new StringBuilder();
-
-        // Для хранения времени каждого шага
-        long[] timings = new long[4]; // [преп, поиск, ранжирование, подготовка]
+        long[] timings = new long[4];
 
         try {
             long t1 = System.currentTimeMillis();
+            // Сохраняем входящую реплику гостя в аудит-лог Postgres
             syncMessageToAdminStoreAsync(hotelKey, chatId, "user", userQuestion);
+
+            // Очистка спецсимволов
             userQuestion = userQuestion.replaceAll("[\\p{So}\\p{Cn}]", "");
-            PreprocessedQuestion processed =  preprocessQuestion(userQuestion, history);
-            processed.setNormalized(userQuestion);
-            log.info("Вопрос пользователя: {} . Нормализованный вопрос: {} Альтернативные вопросы: {}",
-                    userQuestion, processed.getNormalized(), processed.getAlternatives());
+
+            // 1. ВЫЗОВ ОБНОВЛЕННОГО РОУТЕРА ПРЕПРОЦЕССИНГА (REST/gRPC классификатор)
+            PreprocessedQuestion processed = preprocessorRouter.preprocess(userQuestion, history);
             timings[0] = System.currentTimeMillis() - t1;
+
+            // =========================================================================
+            // 🌟 ВЕТВЛЕНИЕ: ПАЙПЛАЙН ВЗАИМОДЕЙСТВИЯ (ACTION)
+            // =========================================================================
+            if ("ACTION".equalsIgnoreCase(processed.getIntentType())) {
+                log.info("🚀 [ПАЙПЛАЙН ДЕЙСТВИЙ] Обнаружено намерение транзакции: {}. Параметры: {}",
+                        processed.getActionName(), processed.getParameters());
+
+                // Формируем запрос к интеграционному микросервису отеля
+                ActionRequest actionReq = new ActionRequest(hotelKey, chatId, processed.getActionName(), processed.getParameters());
+
+                // Вызываем HotelActionService через роутер (REST или gRPC)
+                ActionResponse actionRes = hotelActionRouter.execute(actionReq);
+
+                String actionBotMessage = actionRes.getMessage();
+
+                // Синхронизируем ответ отеля в базу данных аудита админки
+                syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", actionBotMessage);
+
+                log.info("🏆 [ПАЙПЛАЙН ДЕЙСТВИЙ] Выполнен за {} мс", System.currentTimeMillis() - totalStart);
+
+                // Фронтенд чата ожидает токен в JSON, отдаем результат одним реактивным импульсом
+                String jsonToken = objectMapper.writeValueAsString(Map.of("token", actionBotMessage));
+                return Flux.just(jsonToken);
+            }
+            // =========================================================================
+
+
+            // =========================================================================
+            // 📄 СТАНДАРТНЫЙ ИНФОРМАЦИОННЫЙ ПАЙПЛАЙН (SEARCH / RAG)
+            // =========================================================================
+            log.info("📄 [ИНФОРМАЦИОННЫЙ ПАЙПЛАЙН] Вопрос: {} . Альтернативы: {}",
+                    processed.getNormalized(), processed.getAlternatives());
 
             long t2 = System.currentTimeMillis();
             List<DocumentDto> documents = searchDocuments(hotelKey, processed);
             timings[1] = System.currentTimeMillis() - t2;
 
             long t3 = System.currentTimeMillis();
-            List<DocumentDto> topDocs = rankingService.getTopK(documents, 3);
+            List<DocumentDto> topDocs = rankingService.getTopK(documents, 5);
             timings[2] = System.currentTimeMillis() - t3;
 
             String context = topDocs.stream()
@@ -129,28 +162,14 @@ public class RagChatService {
 
             if (context.isBlank() || topDocs.isEmpty()) {
                 String fallbackMsg = "Информация по данному вопросу временно отсутствует в базе знаний отеля.";
-                log.info("""
-                        ╔══════════════════════════════════════╗
-                        ║         ИТОГИ RAG PIPELINE           ║
-                        ╠══════════════════════════════════════╣
-                        ║ Препроцессинг:     {} мс
-                        ║ Поиск ({}):      {} мс
-                        ║ Ранжирование:      {} мс
-                        ║ Подготовка итого:  {} мс
-                        ║ Генерация:         — (контекст пуст)
-                        ╚══════════════════════════════════════╝
-                        """,
-                        timings[0], searchRouter.getProtocol().toUpperCase(), timings[1], timings[2], timings[3]);
                 syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fallbackMsg);
-                return Flux.just("{\"token\":\"Информация по данному вопросу отсутствует в базе знаний.\"}");
+                return Flux.just("{\"token\":\"" + fallbackMsg + "\"}");
             }
 
             long streamStart = System.currentTimeMillis();
 
             return llmStreamRouter.stream(new AnswerRequest(userQuestion, context, history, timestamp))
                     .doOnNext(tokenMapJson -> {
-                        // Твои логи на каждый токен остаются в llmStreamRouter,
-                        // а здесь мы просто аккумулируем строку для базы данных
                         try {
                             JsonNode node = objectMapper.readTree(tokenMapJson);
                             String token = node.path("token").asText("");
@@ -160,17 +179,17 @@ public class RagChatService {
                     .doOnComplete(() -> {
                         long streamTime = System.currentTimeMillis() - streamStart;
                         log.info("""
-                            ╔══════════════════════════════════════╗
-                            ║         ИТОГИ RAG PIPELINE           ║
-                            ╠══════════════════════════════════════╣
-                            ║ Препроцессинг:     {} мс
-                            ║ Поиск ({}):      {} мс
-                            ║ Ранжирование:      {} мс
-                            ║ Подготовка итого:  {} мс
-                            ║ Генерация (LLM/{}):   {} мс
-                            ║ ПОЛНОЕ ВРЕМЯ:      {} мс
-                            ╚══════════════════════════════════════╝
-                            """,
+                        ╔══════════════════════════════════════╗
+                        ║         ИТОГИ RAG PIPELINE           ║
+                        ╠══════════════════════════════════════╣
+                        ║ Препроцессинг:     {} мс
+                        ║ Поиск ({}):      {} мс
+                        ║ Ранжирование:      {} мс
+                        ║ Подготовка итого:  {} мс
+                        ║ Генерация (LLM/{}):   {} мс
+                        ║ ПОЛНОЕ ВРЕМЯ:      {} мс
+                        ╚══════════════════════════════════════╝
+                        """,
                                 timings[0],
                                 searchRouter.getProtocol().toUpperCase(), timings[1],
                                 timings[2], timings[3],
@@ -180,8 +199,8 @@ public class RagChatService {
                     });
 
         } catch (Exception e) {
-            log.error("Ошибка в RAG pipeline: {}", e.getMessage());
-            return Flux.just("{\"token\":\"Извините, произошла ошибка.\"}");
+            log.error("Ошибка в объединенном RAG/Action pipeline: {}", e.getMessage());
+            return Flux.just("{\"token\":\"Извините, произошла внутренняя ошибка системы.\"}");
         }
     }
 
@@ -249,7 +268,7 @@ public class RagChatService {
             // Делаем запрос к панели администратора для выгрузки логов конкретной сессии
             List<Map<String, String>> rawHistory = adminRestClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/admin/chats/history/single") // Предполагаем этот эндпоинт в админке
+                            .path("/admin/chats/history/single")
                             .queryParam("hotelKey", hotelKey)
                             .queryParam("chatId", chatId)
                             .build())

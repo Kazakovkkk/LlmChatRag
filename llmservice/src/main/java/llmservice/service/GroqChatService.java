@@ -60,9 +60,9 @@ public class GroqChatService {
                 .map(this::parseResponse);
     }
 
-    public Flux<String> chatStream(String prompt, List<MessageDto> history) {
-        log.info("Groq stream | Модель: {} | История: {} сообщений",
-                model, history != null ? history.size() : 0);
+    public Flux<String> chatStream(String prompt) {
+        log.info("Groq stream | Модель: {}",
+                model);
 
         List<Map<String, String>> messages = new ArrayList<>();
 
@@ -71,12 +71,6 @@ public class GroqChatService {
                 "content", "Ты ассистент отеля. Отвечай на том же языке на котором задан вопрос. Отвечай только ответ есть в контексте"
         ));
 
-        if (history != null) {
-            history.forEach(msg -> messages.add(Map.of(
-                    "role", msg.getRole().equals("assistant") ? "assistant" : "user",
-                    "content", msg.getContent()
-            )));
-        }
 
         messages.add(Map.of("role", "user", "content", prompt));
 

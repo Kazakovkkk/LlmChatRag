@@ -1,11 +1,10 @@
 // grpc/LlmGrpcClient.java
 package LlmChatRag.grpc;
 
-import com.example.grpc.llm.AnswerStreamRequest;
-import com.example.grpc.llm.AnswerStreamResponse;
-import com.example.grpc.llm.LlmServiceGrpc;
-import com.example.grpc.llm.MessageProto;
+import com.example.grpc.llm.*;
 import LlmChatRag.dto.AnswerRequest;
+import LlmChatRag.dto.PreprocessedQuestion;
+import LlmChatRag.dto.MessageDto;
 import io.grpc.ManagedChannel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.grpc.client.GrpcChannelFactory;
@@ -13,6 +12,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -20,12 +20,13 @@ import java.util.stream.Collectors;
 public class LlmGrpcClient {
 
     private final LlmServiceGrpc.LlmServiceStub stub;
+    private final LlmServiceGrpc.LlmServiceBlockingStub blockingStub; // ← Добавляем блокирующий стаб для унарных вызовов
 
     public LlmGrpcClient(GrpcChannelFactory channelFactory) {
         ManagedChannel channel = channelFactory.createChannel("llm-service");
         this.stub = LlmServiceGrpc.newStub(channel);
+        this.blockingStub = LlmServiceGrpc.newBlockingStub(channel);
     }
-
     public Flux<String> answerStream(AnswerRequest request) {
         long start = System.currentTimeMillis();
         log.info("⏱ gRPC answerStream начало | вопрос: '{}'", request.getQuestion());
@@ -68,5 +69,30 @@ public class LlmGrpcClient {
                 }
             });
         });
+    }
+    public PreprocessedQuestion preprocessQuestion(String question, List<MessageDto> history) {
+        List<MessageProto> historyProto = history.stream()
+                .map(m -> MessageProto.newBuilder()
+                        .setRole(m.getRole())
+                        .setContent(m.getContent())
+                        .build())
+                .collect(Collectors.toList());
+
+        PreprocessGrpcRequest grpcRequest = PreprocessGrpcRequest.newBuilder()
+                .setQuestion(question)
+                .addAllHistory(historyProto)
+                .build();
+
+        // Выполняем блокирующий сетевой запрос к llmservice по gRPC
+        PreprocessGrpcResponse response = blockingStub.preprocessQuestion(grpcRequest);
+
+        PreprocessedQuestion dto = new PreprocessedQuestion();
+        dto.setIntentType(response.getIntentType());
+        dto.setActionName(response.getActionName().isEmpty() ? null : response.getActionName());
+        dto.setParameters(response.getParametersMap());
+        dto.setNormalized(response.getNormalized().isEmpty() ? null : response.getNormalized());
+        dto.setAlternatives(response.getAlternativesList());
+
+        return dto;
     }
 }

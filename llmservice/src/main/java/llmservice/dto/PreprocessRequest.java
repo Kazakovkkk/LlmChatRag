@@ -4,7 +4,7 @@ import java.util.List;
 
 public class PreprocessRequest {
     private String question;
-    private List<MessageDto> history;  // ← добавили
+    private List<MessageDto> history;
 
     public PreprocessRequest() {}
     public String getQuestion() { return question; }

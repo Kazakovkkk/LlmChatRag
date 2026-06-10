@@ -10,6 +10,7 @@ import reactor.core.publisher.Mono;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -21,7 +22,6 @@ public class AnswerGenerationService {
 
     private static final String AG_SYSTEM_PROMPT = """
     Ты ассистент отеля который отвечает на вопросы гостей.
-    
     На вход получаешь:
     1) Текущее время запроса.
     2) Историю беседы.
@@ -34,6 +34,8 @@ public class AnswerGenerationService {
       Если вопрос на английском — отвечай на английском.
       Если вопрос на другом языке — отвечай на том же языке.
     - Используй ТОЛЬКО информацию из контекста, другую информацию нельзя использовать.
+    - ВАЖНО: Если в контексте из базы знаний НЕТ ответа на вопрос гостя или информации недостаточно,\s
+      твоя единственная задача — ответить СТРОГО фразой: "Информации нет в базе данных." и ничего более не придумывать.
     - Если вопрос 'а после него?' или 'во сколько?' — используй историю беседы
       чтобы понять о чём речь, и дай конкретный ответ с временем.
     - Никогда не смешивай языки в одном ответе.
@@ -41,7 +43,6 @@ public class AnswerGenerationService {
 
     private final LlmRouter llmRouter;
 
-    // Стриминг токенов
     public Flux<String> generateAnswerStream(String userQuestion,
                                              String context,
                                              List<MessageDto> history,
@@ -59,11 +60,16 @@ public class AnswerGenerationService {
             }
         }
 
-        // История в текстовом виде
-        String historyContext = "";
+        List<MessageDto> limitedHistory = new ArrayList<>();
         if (history != null && !history.isEmpty()) {
-            historyContext = "История беседы:\n" +
-                    history.stream()
+            int size = history.size();
+            limitedHistory = history.subList(Math.max(0, size - 6), size);
+        }
+
+        String historyContext = "";
+        if (!limitedHistory.isEmpty()) {
+            historyContext = "История беседы (последние 6 реплик):\n" +
+                    limitedHistory.stream()
                             .map(m -> (m.getRole().equals("user") ? "Гость" : "Ассистент")
                                     + ": " + m.getContent())
                             .collect(Collectors.joining("\n"))
@@ -72,7 +78,7 @@ public class AnswerGenerationService {
 
         String prompt = AG_SYSTEM_PROMPT + "\n\n"
                 + timeContext
-                + historyContext  // ← история в промпте
+                + historyContext
                 + "Текущий вопрос гостя: " + userQuestion + "\n\n"
                 + "Контекст из базы знаний:\n'''\n" + context + "\n'''\n\n"
                 + "ВАЖНО: контекст из базы знаний является истиной. "
@@ -84,10 +90,9 @@ public class AnswerGenerationService {
         log.info("Контекст: {}", context);
         log.info("История ({} сообщений):", history != null ? history.size() : 0);
 
-        return llmRouter.chatStream(prompt, history);
+        return llmRouter.chatStream(prompt);
     }
 
-    // Обычный ответ (оставим на всякий случай)
     public Mono<String> generateAnswer(String userQuestion, String context) {
         String prompt = AG_SYSTEM_PROMPT + "\n\n"
                 + "Вопрос пользователя: " + userQuestion + "\n\n"
