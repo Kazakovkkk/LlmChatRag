@@ -14,24 +14,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.grpc.server.service.GrpcService;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
+import java.math.BigDecimal;
 
 @Slf4j
 @GrpcService
 @RequiredArgsConstructor
-public class HotelManagementGrpcService extends com.example.grpc.management.HotelManagementServiceGrpc.HotelManagementServiceImplBase {
+public class HotelManagementGrpcService extends HotelManagementServiceGrpc.HotelManagementServiceImplBase {
 
     private final GuestRepository guestRepository;
     private final HotelStaffRepository hotelStaffRepository;
     private final FoodMenuRepository foodMenuRepository;
     private final ActionTicketRepository actionTicketRepository;
 
-    // ===================================================================
-    // 1. ВКЛАДКА: ГОСТИ
-    // ===================================================================
     @Override
     @Transactional(readOnly = true)
     public void getGuests(com.example.grpc.management.GetGuestsRequest request, StreamObserver<com.example.grpc.management.GetGuestsResponse> responseObserver) {
@@ -40,7 +35,7 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         com.example.grpc.management.GetGuestsResponse.Builder rb = com.example.grpc.management.GetGuestsResponse.newBuilder();
 
         guests.forEach(g -> rb.addGuests(com.example.grpc.management.GuestManagementProto.newBuilder()
-                .setId(g.getId().toString())
+                .setId(String.valueOf(g.getId()))
                 .setChatId(g.getChatId())
                 .setFirstName(g.getFirstName() != null ? g.getFirstName() : "")
                 .setLastName(g.getLastName() != null ? g.getLastName() : "")
@@ -57,9 +52,12 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
     public void updateGuest(com.example.grpc.management.UpdateGuestRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
         try {
             com.example.grpc.management.GuestManagementProto p = request.getGuest();
-            Guest guest = guestRepository.findById(UUID.fromString(p.getId())).orElse(new Guest());
 
-            if (guest.getId() == null) guest.setId(UUID.fromString(p.getId()));
+            // Если ID пустой или равен "0", создаем новую сущность, иначе ищем в БД
+            Guest guest = (p.getId() == null || p.getId().isEmpty() || "0".equals(p.getId()))
+                    ? new Guest()
+                    : guestRepository.findById(Long.parseLong(p.getId())).orElse(new Guest());
+
             guest.setHotelKey(request.getHotelKey());
             guest.setChatId(p.getChatId());
             guest.setFirstName(p.getFirstName());
@@ -76,9 +74,6 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         responseObserver.onCompleted();
     }
 
-    // ===================================================================
-    // 2. ВКЛАДКА: ПЕРСОНАЛ
-    // ===================================================================
     @Override
     @Transactional(readOnly = true)
     public void getStaff(com.example.grpc.management.GetStaffRequest request, StreamObserver<com.example.grpc.management.GetStaffResponse> responseObserver) {
@@ -87,7 +82,7 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         com.example.grpc.management.GetStaffResponse.Builder rb = com.example.grpc.management.GetStaffResponse.newBuilder();
 
         staffList.forEach(s -> rb.addStaff(com.example.grpc.management.StaffManagementProto.newBuilder()
-                .setId(s.getId().toString())
+                .setId(String.valueOf(s.getId()))
                 .setName(s.getName())
                 .setRole(s.getRole())
                 .setStatus(s.getStatus())
@@ -101,9 +96,11 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
     public void updateStaff(com.example.grpc.management.UpdateStaffRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
         try {
             com.example.grpc.management.StaffManagementProto p = request.getStaff();
-            HotelStaff staff = hotelStaffRepository.findById(UUID.fromString(p.getId())).orElse(new HotelStaff());
 
-            if (staff.getId() == null) staff.setId(UUID.fromString(p.getId()));
+            HotelStaff staff = (p.getId() == null || p.getId().isEmpty() || "0".equals(p.getId()))
+                    ? new HotelStaff()
+                    : hotelStaffRepository.findById(Long.parseLong(p.getId())).orElse(new HotelStaff());
+
             staff.setHotelKey(request.getHotelKey());
             staff.setName(p.getName());
             staff.setRole(p.getRole());
@@ -117,9 +114,6 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         responseObserver.onCompleted();
     }
 
-    // ===================================================================
-    // 3. ВКЛАДКА: МЕНЮ (Защита цен)
-    // ===================================================================
     @Override
     @Transactional(readOnly = true)
     public void getMenu(com.example.grpc.management.GetMenuRequest request, StreamObserver<com.example.grpc.management.GetMenuResponse> responseObserver) {
@@ -128,7 +122,7 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         com.example.grpc.management.GetMenuResponse.Builder rb = com.example.grpc.management.GetMenuResponse.newBuilder();
 
         items.forEach(m -> rb.addMenuItems(com.example.grpc.management.MenuItemManagementProto.newBuilder()
-                .setId(m.getId().toString())
+                .setId(String.valueOf(m.getId()))
                 .setName(m.getName())
                 .setPrice(m.getPrice().doubleValue())
                 .setStockQuantity(m.getStockQuantity())
@@ -142,10 +136,9 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
     public void updateMenuStock(com.example.grpc.management.UpdateMenuStockRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
         log.info("📥 gRPC Admin | Коррекция склада. ID: {}, Остаток: {} шт.", request.getItemId(), request.getStockQuantity());
         try {
-            FoodMenu item = foodMenuRepository.findById(UUID.fromString(request.getItemId()))
+            FoodMenu item = foodMenuRepository.findById(Long.parseLong(request.getItemId()))
                     .orElseThrow(() -> new IllegalArgumentException("Товар не найден"));
 
-            // Защита цены: меняем только остаток на складе
             item.setStockQuantity(request.getStockQuantity());
             foodMenuRepository.save(item);
 
@@ -156,9 +149,6 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         responseObserver.onCompleted();
     }
 
-    // ===================================================================
-    // 4. ВКЛАДКА: ЖУРНАЛ ЗАЯВОК ИИ (Бизнес-логика освобождения персонала)
-    // ===================================================================
     @Override
     @Transactional(readOnly = true)
     public void getTickets(com.example.grpc.management.GetTicketsRequest request, StreamObserver<com.example.grpc.management.GetTicketsResponse> responseObserver) {
@@ -167,7 +157,7 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
         com.example.grpc.management.GetTicketsResponse.Builder rb = com.example.grpc.management.GetTicketsResponse.newBuilder();
 
         tickets.forEach(t -> rb.addTickets(com.example.grpc.management.TicketManagementProto.newBuilder()
-                .setId(t.getId().toString())
+                .setId(String.valueOf(t.getId()))
                 .setGuestName(t.getGuest().getFirstName() + " " + t.getGuest().getLastName())
                 .setRoomNumber(t.getGuest().getRoomNumber() != null ? t.getGuest().getRoomNumber() : "")
                 .setTicketType(t.getTicketType())
@@ -185,14 +175,13 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
     public void updateTicketStatus(com.example.grpc.management.UpdateTicketStatusRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
         log.info("📥 gRPC Admin | Изменение статуса тикета {} на {}", request.getTicketId(), request.getNewStatus());
         try {
-            ActionTicket ticket = actionTicketRepository.findById(UUID.fromString(request.getTicketId()))
+            ActionTicket ticket = actionTicketRepository.findById(Long.parseLong(request.getTicketId()))
                     .orElseThrow(() -> new IllegalArgumentException("Тикет не найден"));
 
             String oldStatus = ticket.getStatus();
             String newStatus = request.getNewStatus().toUpperCase();
             ticket.setStatus(newStatus);
 
-            // Автоматическое освобождение сотрудников отеля при завершении/отмене задачи
             if (ticket.getAssignedStaff() != null && ("COMPLETED".equals(newStatus) || "REJECTED".equals(newStatus))) {
                 if ("IN_PROGRESS".equals(oldStatus)) {
                     ticket.getAssignedStaff().setStatus("FREE");
@@ -204,6 +193,119 @@ public class HotelManagementGrpcService extends com.example.grpc.management.Hote
             responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder().setSuccess(true).setMessage("Статус заявки обновлен").build());
         } catch (Exception e) {
             responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder().setSuccess(false).setMessage(e.getMessage()).build());
+        }
+        responseObserver.onCompleted();
+    }
+    @Override
+    @Transactional
+    public void deleteStaff(com.example.grpc.management.DeleteStaffRequest request,
+                            StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
+        log.info("📥 gRPC Admin | Удаление сотрудника с ID: {}", request.getStaffId());
+        try {
+            Long staffId = Long.parseLong(request.getStaffId());
+            hotelStaffRepository.deleteById(staffId);
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(true).setMessage("Сотрудник успешно удален из штата").build());
+        } catch (Exception e) {
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(false).setMessage(e.getMessage()).build());
+        }
+        responseObserver.onCompleted();
+    }
+
+    // 2. Создание новой позиции в меню
+    @Override
+    @Transactional
+    public void createMenu(com.example.grpc.management.CreateMenuRequest request,
+                           StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
+        log.info("📥 gRPC Admin | Добавление позиции в меню: {}", request.getName());
+        try {
+            FoodMenu item = FoodMenu.builder()
+                    .hotelKey(request.getHotelKey())
+                    .name(request.getName())
+                    .price(BigDecimal.valueOf(request.getPrice()))
+                    .stockQuantity(request.getStockQuantity())
+                    .build();
+            foodMenuRepository.save(item);
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(true).setMessage("Позиция успешно добавлена в меню").build());
+        } catch (Exception e) {
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(false).setMessage(e.getMessage()).build());
+        }
+        responseObserver.onCompleted();
+    }
+
+    // 3. Удаление позиции из меню
+    @Override
+    @Transactional
+    public void deleteMenu(com.example.grpc.management.DeleteMenuRequest request,
+                           StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
+        log.info("📥 gRPC Admin | Удаление позиции меню с ID: {}", request.getItemId());
+        try {
+            Long itemId = Long.parseLong(request.getItemId());
+            foodMenuRepository.deleteById(itemId);
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(true).setMessage("Позиция удалена из каталога").build());
+        } catch (Exception e) {
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(false).setMessage(e.getMessage()).build());
+        }
+        responseObserver.onCompleted();
+    }
+
+    // 4. Ручное создание заявки
+    @Override
+    @Transactional
+    public void createTicket(com.example.grpc.management.CreateTicketRequest request,
+                             StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
+        log.info("📥 gRPC Admin | Ручное создание заявки типа {} для комнаты {}", request.getTicketType(), request.getRoomNumber());
+        try {
+            // Ищем или создаем фиктивного гостя для привязки транзакции внутри СУБД
+            Guest guest = guestRepository.findAllByHotelKey(request.getHotelKey()).stream()
+                    .filter(g -> g.getRoomNumber().equals(request.getRoomNumber()))
+                    .findFirst()
+                    .orElseGet(() -> guestRepository.save(Guest.builder()
+                            .hotelKey(request.getHotelKey())
+                            .chatId("manual_session_" + System.currentTimeMillis())
+                            .firstName(request.getGuestName())
+                            .lastName("")
+                            .roomNumber(request.getRoomNumber())
+                            .status("CHECKED_IN")
+                            .build()));
+
+            ActionTicket ticket = ActionTicket.builder()
+                    .hotelKey(request.getHotelKey())
+                    .guest(guest)
+                    .ticketType(request.getTicketType())
+                    .status(request.getStatus().toUpperCase())
+                    .totalPrice(BigDecimal.valueOf(request.getTotalPrice()))
+                    .build();
+
+            actionTicketRepository.save(ticket);
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(true).setMessage("Заявка успешно зарегистрирована").build());
+        } catch (Exception e) {
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(false).setMessage(e.getMessage()).build());
+        }
+        responseObserver.onCompleted();
+    }
+
+    // 5. Удаление архивной заявки
+    @Override
+    @Transactional
+    public void deleteTicket(com.example.grpc.management.DeleteTicketRequest request,
+                             StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
+        log.info("📥 gRPC Admin | Удаление тикета с ID: {}", request.getTicketId());
+        try {
+            Long ticketId = Long.parseLong(request.getTicketId());
+            actionTicketRepository.deleteById(ticketId);
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(true).setMessage("Заявка удалена из логов СУБД").build());
+        } catch (Exception e) {
+            responseObserver.onNext(com.example.grpc.management.ManagementActionResponse.newBuilder()
+                    .setSuccess(false).setMessage(e.getMessage()).build());
         }
         responseObserver.onCompleted();
     }

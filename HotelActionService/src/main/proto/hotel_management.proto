@@ -22,6 +22,11 @@ service HotelManagementService {
   // 4. Журнал заявок ИИ (Менять можно ТОЛЬКО статус)
   rpc GetTickets (GetTicketsRequest) returns (GetTicketsResponse);
   rpc UpdateTicketStatus (UpdateTicketStatusRequest) returns (ManagementActionResponse);
+  rpc DeleteStaff (DeleteStaffRequest) returns (ManagementActionResponse);
+  rpc CreateMenu (CreateMenuRequest) returns (ManagementActionResponse);
+  rpc DeleteMenu (DeleteMenuRequest) returns (ManagementActionResponse);
+  rpc CreateTicket (CreateTicketRequest) returns (ManagementActionResponse);
+  rpc DeleteTicket (DeleteTicketRequest) returns (ManagementActionResponse);
 }
 
 // --- Общие структуры ответов ---
@@ -90,4 +95,31 @@ message GetTicketsResponse { repeated TicketManagementProto tickets = 1; }
 message UpdateTicketStatusRequest {
   string ticket_id = 1;
   string new_status = 2; // 'COMPLETED', 'REJECTED', 'IN_PROGRESS'
+}
+message DeleteStaffRequest {
+  string staff_id = 1;
+}
+
+message CreateMenuRequest {
+  string hotel_key = 1;
+  string name = 2;
+  double price = 3;
+  int32 stock_quantity = 4;
+}
+
+message DeleteMenuRequest {
+  string item_id = 1;
+}
+
+message CreateTicketRequest {
+  string hotel_key = 1;
+  string guest_name = 2;
+  string room_number = 3;
+  string ticket_type = 4;
+  double total_price = 5;
+  string status = 6;
+}
+
+message DeleteTicketRequest {
+  string ticket_id = 1;
 }

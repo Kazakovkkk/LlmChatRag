@@ -113,17 +113,12 @@ public class RagChatService {
             PreprocessedQuestion processed = preprocessorRouter.preprocess(userQuestion, history);
             timings[0] = System.currentTimeMillis() - t1;
 
-            // =========================================================================
-            // 🌟 ВЕТВЛЕНИЕ: ПАЙПЛАЙН ВЗАИМОДЕЙСТВИЯ (ACTION)
-            // =========================================================================
             if ("ACTION".equalsIgnoreCase(processed.getIntentType())) {
                 log.info("🚀 [ПАЙПЛАЙН ДЕЙСТВИЙ] Обнаружено намерение транзакции: {}. Параметры: {}",
                         processed.getActionName(), processed.getParameters());
 
-                // Формируем запрос к интеграционному микросервису отеля
                 ActionRequest actionReq = new ActionRequest(hotelKey, chatId, processed.getActionName(), processed.getParameters());
 
-                // Вызываем HotelActionService через роутер (REST или gRPC)
                 ActionResponse actionRes = hotelActionRouter.execute(actionReq);
 
                 String actionBotMessage = actionRes.getMessage();
@@ -137,12 +132,8 @@ public class RagChatService {
                 String jsonToken = objectMapper.writeValueAsString(Map.of("token", actionBotMessage));
                 return Flux.just(jsonToken);
             }
-            // =========================================================================
 
 
-            // =========================================================================
-            // 📄 СТАНДАРТНЫЙ ИНФОРМАЦИОННЫЙ ПАЙПЛАЙН (SEARCH / RAG)
-            // =========================================================================
             log.info("📄 [ИНФОРМАЦИОННЫЙ ПАЙПЛАЙН] Вопрос: {} . Альтернативы: {}",
                     processed.getNormalized(), processed.getAlternatives());
 
@@ -160,43 +151,69 @@ public class RagChatService {
 
             timings[3] = System.currentTimeMillis() - totalStart;
 
+            // Корректно урезаем историю до 6 сообщений перед генерацией и препроцессингом
+            List<MessageDto> limitedHistory = history != null && history.size() > 6
+                    ? history.subList(history.size() - 6, history.size())
+                    : history;
+
             if (context.isBlank() || topDocs.isEmpty()) {
-                String fallbackMsg = "Информация по данному вопросу временно отсутствует в базе знаний отеля.";
+                String fallbackMsg = "Информация по данному вопросу временно отсутствует в базе знаний отеля. Сообщение передано персоналу.";
+                // Вызываем кастомный метод сохранения, который сразу взводит pending_admin_reply = true
                 syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fallbackMsg);
                 return Flux.just("{\"token\":\"" + fallbackMsg + "\"}");
             }
 
             long streamStart = System.currentTimeMillis();
 
-            return llmStreamRouter.stream(new AnswerRequest(userQuestion, context, history, timestamp))
+            // 1. Запускаем базовый стрим от LLM
+            Flux<String> llmResponseFlux = llmStreamRouter.stream(new AnswerRequest(userQuestion, context, limitedHistory, timestamp))
                     .doOnNext(tokenMapJson -> {
                         try {
                             JsonNode node = objectMapper.readTree(tokenMapJson);
                             String token = node.path("token").asText("");
                             fullBotResponse.append(token);
                         } catch (Exception ignored) {}
-                    })
-                    .doOnComplete(() -> {
-                        long streamTime = System.currentTimeMillis() - streamStart;
-                        log.info("""
-                        ╔══════════════════════════════════════╗
-                        ║         ИТОГИ RAG PIPELINE           ║
-                        ╠══════════════════════════════════════╣
-                        ║ Препроцессинг:     {} мс
-                        ║ Поиск ({}):      {} мс
-                        ║ Ранжирование:      {} мс
-                        ║ Подготовка итого:  {} мс
-                        ║ Генерация (LLM/{}):   {} мс
-                        ║ ПОЛНОЕ ВРЕМЯ:      {} мс
-                        ╚══════════════════════════════════════╝
-                        """,
-                                timings[0],
-                                searchRouter.getProtocol().toUpperCase(), timings[1],
-                                timings[2], timings[3],
-                                llmStreamRouter.getProtocol().toUpperCase(), streamTime,
-                                System.currentTimeMillis() - totalStart);
-                        syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fullBotResponse.toString());
                     });
+
+            // 2. Склеиваем его с проверкой на Fallback-маркер через Defer
+            return llmResponseFlux.concatWith(Flux.defer(() -> {
+                String finalResponse = fullBotResponse.toString();
+
+                // Если ИИ послушно выплюнул фразу-отказ
+                if (finalResponse.contains("Информации нет в базе данных")) {
+                    String appendNotice = " Для уточнения сообщение передано персоналу отеля. Ждите ответа.";
+
+                    // Дописываем в локальный буфер, чтобы в финальный лог ушла вся строка целиком
+                    fullBotResponse.append(appendNotice);
+
+                    // Переключаем статус чата в базе данных (взводим флаг pending_admin_reply = true
+
+                    try {
+                        // Пушим гостю в чат финальный хвостик сообщения
+                        return Flux.just(objectMapper.writeValueAsString(Map.of("token", appendNotice)));
+                    } catch (Exception e) {
+                        return Flux.just("{\"token\":\"" + appendNotice + "\"}");
+                    }
+                }
+                return Flux.empty(); // Если всё ок, ничего не добавляем
+            })).doOnComplete(() -> {
+                // 3. Вызывается, когда отработал и LLM-стрим, и наш Defer-аппендер
+                long streamTime = System.currentTimeMillis() - streamStart;
+                log.info("""
+            ╔══════════════════════════════════════╗
+            ║         ИТОГИ RAG PIPELINE           ║
+            ╠══════════════════════════════════════╣
+            ║ Препроцессинг:     {} мс
+            ║ Поиск:             {} мс
+            ║ Ранжирование:      {} мс
+            ║ Генерация (LLM):   {} мс
+            ║ ПОЛНОЕ ВРЕМЯ:      {} мс
+            ╚══════════════════════════════════════╝
+            """, timings[0], timings[1], timings[2], streamTime, System.currentTimeMillis() - totalStart);
+
+                // Сохраняем итоговый красивый текст в историю диалога
+                syncMessageToAdminStoreAsync(hotelKey, chatId, "assistant", fullBotResponse.toString());
+            });
 
         } catch (Exception e) {
             log.error("Ошибка в объединенном RAG/Action pipeline: {}", e.getMessage());
@@ -211,6 +228,7 @@ public class RagChatService {
             allQueries.addAll(processed.getAlternatives());
         }
         List<DocumentDto> allDocuments = new ArrayList<>();
+        log.info("То что передаётся в запрос в qdrant: {}", allQueries);
         for (String query : allQueries) {
             try {
                 // ← теперь через роутер
@@ -218,14 +236,14 @@ public class RagChatService {
                 if (docs != null && !docs.isEmpty()) {
                     log.info("=== Запрос: '{}' | Найдено документов: {} ===", query, docs.size());
                     docs.forEach(doc -> log.info(
-                            "  📄 ID: {} | Score: {} | Text: {}",
+                            "ID: {} | Score: {} | Text: {}",
                             doc.getId(),
                             doc.getScore(),
                             doc.getText()
                     ));
                     allDocuments.addAll(docs);
                 } else {
-                    log.warn("  ⚠️ Запрос '{}' вернул пустой результат", query);
+                    log.warn("Запрос '{}' вернул пустой результат", query);
                 }
 
             } catch (Exception e) {

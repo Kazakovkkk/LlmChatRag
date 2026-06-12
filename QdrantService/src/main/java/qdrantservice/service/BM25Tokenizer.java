@@ -1,8 +1,10 @@
 package qdrantservice.service;
 
+import io.qdrant.client.grpc.Points;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import io.qdrant.client.grpc.JsonWithInt.Value;
 
 import java.util.*;
 
@@ -22,14 +24,16 @@ public class BM25Tokenizer {
             "the", "a", "an", "in", "on", "at", "for", "to", "of", "is"
     );
 
+    // Полностью обновленный метод в BM25Tokenizer.java
+
     public void indexDocument(String statsCollection, String documentId, String text) {
         List<String> terms = tokenizeToTerms(text);
         int docLength = terms.size();
+        Set<String> uniqueTerms = new HashSet<>(terms);
 
-        // 1. Сохраняем длину текущего документа
-        statsRepository.saveDocumentLength(statsCollection, documentId, docLength);
+        if (uniqueTerms.isEmpty()) return;
 
-        // 2. Считываем текущую глобальную метрику или создаем новую
+        // 1. Читаем глобальную статистику (1-й сетевой запрос)
         var globalMetaOpt = statsRepository.loadGlobalStats(statsCollection);
         int oldTotalDocs = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::totalDocuments).orElse(0);
         double oldAvgLen = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::avgDocumentLength).orElse(0.0);
@@ -37,15 +41,43 @@ public class BM25Tokenizer {
         int newTotalDocs = oldTotalDocs + 1;
         double newAvgLen = ((oldAvgLen * oldTotalDocs) + docLength) / newTotalDocs;
 
-        // 3. Апдейтим глобальные параметры
-        statsRepository.saveGlobalStats(statsCollection, newTotalDocs, newAvgLen);
+        // 2. Читаем частоты ВСЕХ уникальных слов чанка одной пачкой (2-й сетевой запрос)
+        Map<String, Integer> currentFreqs = statsRepository.loadTermFrequenciesBatch(statsCollection, uniqueTerms);
 
-        // 4. Покомпонентно инкрементируем частоту уникальных слов
-        Set<String> uniqueTerms = new HashSet<>(terms);
+        // Список для агрегации всех точек, которые нужно обновить/создать
+        List<Points.PointStruct> pointsToUpsert = new ArrayList<>();
+
+        // Собираем точку глобальной статистики
+        Map<String, Value> globalPayload = new HashMap<>();
+        globalPayload.put("total_documents", Value.newBuilder().setIntegerValue(newTotalDocs).build());
+        globalPayload.put("avg_document_length", Value.newBuilder().setDoubleValue(newAvgLen).build());
+        globalPayload.put("is_system_meta", Value.newBuilder().setBoolValue(true).build());
+        pointsToUpsert.add(statsRepository.buildServicePoint("00000000-0000-0000-0000-000000000001", globalPayload));
+
+        // Собираем точку длины текущего документа
+        String docLenUuid = UUID.nameUUIDFromBytes(("doclen_" + documentId).getBytes()).toString();
+        Map<String, Value> docLenPayload = new HashMap<>();
+        docLenPayload.put("doc_id", Value.newBuilder().setStringValue(documentId).build());
+        docLenPayload.put("length", Value.newBuilder().setIntegerValue(docLength).build());
+        docLenPayload.put("is_doc_length", Value.newBuilder().setBoolValue(true).build());
+        pointsToUpsert.add(statsRepository.buildServicePoint(docLenUuid, docLenPayload));
+
+        // Накапливаем изменения для частоты каждого слова в памяти
         for (String term : uniqueTerms) {
-            int currentFreq = statsRepository.loadTermFrequency(statsCollection, term);
-            statsRepository.saveTermFrequency(statsCollection, term, currentFreq + 1);
+            int currentFreq = currentFreqs.getOrDefault(term, 0);
+            int newFreq = currentFreq + 1;
+
+            String termUuid = UUID.nameUUIDFromBytes(term.getBytes()).toString();
+            Map<String, Value> termPayload = new HashMap<>();
+            termPayload.put("term", Value.newBuilder().setStringValue(term).build());
+            termPayload.put("frequency", Value.newBuilder().setIntegerValue(newFreq).build());
+            termPayload.put("is_term", Value.newBuilder().setBoolValue(true).build());
+
+            pointsToUpsert.add(statsRepository.buildServicePoint(termUuid, termPayload));
         }
+
+        // 3. Отправляем всю пачку данных в Qdrant ОДНИМ запросом (3-й сетевой запрос)
+        statsRepository.upsertPointsBatch(statsCollection, pointsToUpsert);
     }
 
     public void clearCollectionStats(String statsCollection) {

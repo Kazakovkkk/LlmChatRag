@@ -9,7 +9,7 @@
 
 <div class="sidebar">
     <h2>Админ</h2>
-    <div style="font-size: 11px; color:#8899aa; margin-bottom:15px;">Отель: <b id="tenantLabel">cosmos</b></div>
+    <div style="font-size: 11px; color:#888888; margin-bottom:15px;">Отель: <b id="tenantLabel">cosmos</b></div>
     <button class="tab-btn active" id="btn-uploadTab" onclick="switchTab('uploadTab')">Добавить регламент</button>
     <button class="tab-btn" id="btn-knowledgeTab" onclick="switchTab('knowledgeTab')">Изменить регламент</button>
     <button class="tab-btn" id="btn-historyTab" onclick="switchTab('historyTab')">Аудит чатов</button>
@@ -28,7 +28,7 @@
                 <p>Перетащите PDF-файл сюда или нажмите для выбора</p>
                 <input type="file" id="pdfFile" accept=".pdf" style="display: none;">
                 <div id="fileInfo" class="file-info" style="display: none;">
-                    🎯 Выбран файл: <span id="fileNameDisplay"></span>
+                    Выбран файл: <span id="fileNameDisplay"></span>
                 </div>
             </div>
 
@@ -66,8 +66,12 @@
             <div id="chatsContainer">Загрузка сессий...</div>
         </div>
     </div>
+
     <div id="guestsTab" class="admin-tab-content" style="display:none;">
-        <h2>Управление проживающими гостями</h2>
+        <div class="section-header">
+            <h2>Управление проживающими гостями</h2>
+            <button class="btn" onclick="openAddGuestModal()">Добавить гостя</button>
+        </div>
         <table class="admin-table">
             <thead>
             <tr>
@@ -75,7 +79,7 @@
                 <th>Номер комнаты</th>
                 <th>ID Сессии чата</th>
                 <th>Статус</th>
-                <th>Действие</th>
+                <th>Действия</th>
             </tr>
             </thead>
             <tbody id="guests-table-body"></tbody>
@@ -83,14 +87,17 @@
     </div>
 
     <div id="staffTab" class="admin-tab-content" style="display:none;">
-        <h2>Мониторинг занятости персонала</h2>
+        <div class="section-header">
+            <h2>Мониторинг занятости персонала</h2>
+            <button class="btn" onclick="openAddStaffModal()">Добавить сотрудника</button>
+        </div>
         <table class="admin-table">
             <thead>
             <tr>
                 <th>Имя сотрудника</th>
                 <th>Роль</th>
                 <th>Текущий статус</th>
-                <th>Действие</th>
+                <th>Действия</th>
             </tr>
             </thead>
             <tbody id="staff-table-body"></tbody>
@@ -98,14 +105,17 @@
     </div>
 
     <div id="menuTab" class="admin-tab-content" style="display:none;">
-        <h2>Учет ресторанных остатков</h2>
+        <div class="section-header">
+            <h2>Учет ресторанных остатков</h2>
+            <button class="btn" onclick="openAddMenuModal()">Добавить позицию</button>
+        </div>
         <table class="admin-table">
             <thead>
             <tr>
                 <th>Название блюда/напитка</th>
                 <th>Фиксированная цена</th>
                 <th>Доступно на складе (шт)</th>
-                <th>Действие</th>
+                <th>Действия</th>
             </tr>
             </thead>
             <tbody id="menu-table-body"></tbody>
@@ -113,21 +123,36 @@
     </div>
 
     <div id="ticketsTab" class="admin-tab-content" style="display:none;">
-        <h2>Журнал транзакционных заявок ИИ-ассистента</h2>
+        <div class="section-header">
+            <h2>Журнал транзакционных заявок ИИ-ассистента</h2>
+            <button class="btn" onclick="openAddTicketModal()">Добавить заявку</button>
+        </div>
         <table class="admin-table">
             <thead>
             <tr>
                 <th>Дата создания</th>
-                <th>Комната и Гость</th>
-                <th>Тип заявки</th>
+                <th>Номер комнаты</th> <th>ФИО гостя</th>     <th>Тип заявки</th>
                 <th>Стоимость (руб)</th>
                 <th>Исполнитель</th>
                 <th>Статус</th>
-                <th>Действие</th>
+                <th>Действия</th>
             </tr>
             </thead>
             <tbody id="tickets-table-body"></tbody>
         </table>
+    </div>
+</div>
+
+<div id="crudModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Редактирование</h3>
+            <span class="close-btn" onclick="closeCrudModal()">&times;</span>
+        </div>
+        <div id="modalFormBody"></div>
+        <div class="modal-footer">
+            <button class="btn" id="modalSaveBtn">Сохранить</button>
+        </div>
     </div>
 </div>
 

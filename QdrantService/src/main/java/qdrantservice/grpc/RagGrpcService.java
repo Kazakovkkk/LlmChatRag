@@ -75,7 +75,7 @@ public class RagGrpcService extends RagServiceGrpc.RagServiceImplBase {
         long start = System.currentTimeMillis();
         String hotelKey = request.getHotelKey();
         String filename = request.getFilename();
-        String mode = request.getMode(); 
+        String mode = request.getMode();
 
         log.info("⏱ gRPC [uploadDocument] начало | Отель: {} | Режим: {} | Файл: '{}'", hotelKey, mode, filename);
 

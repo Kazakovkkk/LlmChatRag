@@ -57,7 +57,7 @@ public class QdrantController {
     public ResponseEntity<Map<String, Object>> uploadPdf(
             @RequestParam("file") MultipartFile file,
             @RequestParam("hotelKey") String hotelKey,
-            @RequestParam(value = "mode", defaultValue = "APPEND") String mode) { // <-- ИСПРАВЛЕНИЕ: Принимаем режим обработки
+            @RequestParam(value = "mode", defaultValue = "APPEND") String mode) {
         try {
             String originalFilename = file.getOriginalFilename();
             String tag = originalFilename != null

@@ -249,4 +249,45 @@ public class AdminPanelController {
         }
         return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при изменении статуса заявки"));
     }
+    @DeleteMapping("/management/staff/{id}")
+    @ResponseBody
+    public ResponseEntity<Void> deleteStaff(@PathVariable("id") String staffId, HttpSession session) {
+        if (session.getAttribute("hotelKey") == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        boolean success = managementService.deleteHotelStaff(staffId);
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
+
+    @PostMapping("/management/menu")
+    @ResponseBody
+    public ResponseEntity<Void> createMenu(@RequestBody MenuItemManagementDto dto, HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        boolean success = managementService.addHotelMenu(hotelKey, dto);
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
+
+    @DeleteMapping("/management/menu/{id}")
+    @ResponseBody
+    public ResponseEntity<Void> deleteMenu(@PathVariable("id") String itemId, HttpSession session) {
+        if (session.getAttribute("hotelKey") == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        boolean success = managementService.deleteHotelMenu(itemId);
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
+
+    @PostMapping("/management/tickets")
+    @ResponseBody
+    public ResponseEntity<Void> createTicket(@RequestBody TicketManagementDto dto, HttpSession session) {
+        String hotelKey = (String) session.getAttribute("hotelKey");
+        if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        boolean success = managementService.addHotelTicket(hotelKey, dto);
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
+
+    @DeleteMapping("/management/tickets/{id}")
+    @ResponseBody
+    public ResponseEntity<Void> deleteTicket(@PathVariable("id") String ticketId, HttpSession session) {
+        if (session.getAttribute("hotelKey") == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        boolean success = managementService.deleteHotelTicket(ticketId);
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
 }

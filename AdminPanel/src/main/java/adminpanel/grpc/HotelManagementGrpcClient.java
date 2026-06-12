@@ -1,13 +1,12 @@
 package adminpanel.grpc;
 
 import com.example.grpc.management.*;
-import com.example.grpc.management.HotelManagementServiceGrpc; // Явный импорт!
+import com.example.grpc.management.HotelManagementServiceGrpc;
 import adminpanel.dto.*;
 import io.grpc.ManagedChannel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.grpc.client.GrpcChannelFactory;
 import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,7 +17,6 @@ public class HotelManagementGrpcClient {
     private final HotelManagementServiceGrpc.HotelManagementServiceBlockingStub stub;
 
     public HotelManagementGrpcClient(GrpcChannelFactory channelFactory) {
-        // Подключаемся к каналу из application.properties
         ManagedChannel channel = channelFactory.createChannel("hotel-management-service");
         this.stub = HotelManagementServiceGrpc.newBlockingStub(channel);
     }
@@ -33,11 +31,17 @@ public class HotelManagementGrpcClient {
         return dtos;
     }
 
+    // 🌟 ИСПРАВЛЕНО: Добавлены null-safe проверки для Protobuf билдера
     public boolean updateGuest(String hotelKey, GuestManagementDto dto) {
         GuestManagementProto proto = GuestManagementProto.newBuilder()
-                .setId(dto.getId()).setChatId(dto.getChatId()).setFirstName(dto.getFirstName())
-                .setLastName(dto.getLastName()).setRoomNumber(dto.getRoomNumber())
-                .setPassportDataEncrypted(dto.getPassportDataEncrypted()).setStatus(dto.getStatus()).build();
+                .setId(dto.getId() != null ? dto.getId() : "")
+                .setChatId(dto.getChatId() != null ? dto.getChatId() : "")
+                .setFirstName(dto.getFirstName() != null ? dto.getFirstName() : "")
+                .setLastName(dto.getLastName() != null ? dto.getLastName() : "")
+                .setRoomNumber(dto.getRoomNumber() != null ? dto.getRoomNumber() : "")
+                .setPassportDataEncrypted(dto.getPassportDataEncrypted() != null ? dto.getPassportDataEncrypted() : "")
+                .setStatus(dto.getStatus() != null ? dto.getStatus() : "")
+                .build();
 
         ManagementActionResponse res = stub.updateGuest(UpdateGuestRequest.newBuilder().setHotelKey(hotelKey).setGuest(proto).build());
         return res.getSuccess();
@@ -51,9 +55,14 @@ public class HotelManagementGrpcClient {
         return dtos;
     }
 
+    // 🌟 ИСПРАВЛЕНО: Добавлены null-safe проверки и для персонала во избежание аналогичной ошибки
     public boolean updateStaff(String hotelKey, StaffManagementDto dto) {
         StaffManagementProto proto = StaffManagementProto.newBuilder()
-                .setId(dto.getId()).setName(dto.getName()).setRole(dto.getRole()).setStatus(dto.getStatus()).build();
+                .setId(dto.getId() != null ? dto.getId() : "")
+                .setName(dto.getName() != null ? dto.getName() : "")
+                .setRole(dto.getRole() != null ? dto.getRole() : "")
+                .setStatus(dto.getStatus() != null ? dto.getStatus() : "")
+                .build();
 
         ManagementActionResponse res = stub.updateStaff(UpdateStaffRequest.newBuilder().setHotelKey(hotelKey).setStaff(proto).build());
         return res.getSuccess();
@@ -90,4 +99,35 @@ public class HotelManagementGrpcClient {
         ManagementActionResponse res = stub.updateTicketStatus(req);
         return res.getSuccess();
     }
+    public boolean removeStaff(String staffId) {
+        com.example.grpc.management.DeleteStaffRequest req = com.example.grpc.management.DeleteStaffRequest.newBuilder()
+                .setStaffId(staffId).build();
+        return stub.deleteStaff(req).getSuccess();
+    }
+
+    public boolean createMenuItem(String hotelKey, MenuItemManagementDto dto) {
+        com.example.grpc.management.CreateMenuRequest req = com.example.grpc.management.CreateMenuRequest.newBuilder()
+                .setHotelKey(hotelKey).setName(dto.getName()).setPrice(dto.getPrice()).setStockQuantity(dto.getStockQuantity()).build();
+        return stub.createMenu(req).getSuccess();
+    }
+
+    public boolean removeMenuItem(String itemId) {
+        com.example.grpc.management.DeleteMenuRequest req = com.example.grpc.management.DeleteMenuRequest.newBuilder()
+                .setItemId(itemId).build();
+        return stub.deleteMenu(req).getSuccess();
+    }
+
+    public boolean createManualTicket(String hotelKey, TicketManagementDto dto) {
+        com.example.grpc.management.CreateTicketRequest req = com.example.grpc.management.CreateTicketRequest.newBuilder()
+                .setHotelKey(hotelKey).setGuestName(dto.getGuestName()).setRoomNumber(dto.getRoomNumber())
+                .setTicketType(dto.getTicketType()).setTotalPrice(dto.getTotalPrice()).setStatus(dto.getStatus()).build();
+        return stub.createTicket(req).getSuccess();
+    }
+
+    public boolean removeTicket(String ticketId) {
+        com.example.grpc.management.DeleteTicketRequest req = com.example.grpc.management.DeleteTicketRequest.newBuilder()
+                .setTicketId(ticketId).build();
+        return stub.deleteTicket(req).getSuccess();
+    }
+
 }

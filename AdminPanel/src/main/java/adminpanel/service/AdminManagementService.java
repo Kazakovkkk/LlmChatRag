@@ -146,4 +146,23 @@ public class AdminManagementService {
     public boolean changeTicketStatus(String ticketId, String newStatus) {
         return hotelManagementGrpcClient.updateTicketStatus(ticketId, newStatus);
     }
+    public boolean deleteHotelStaff(String staffId) {
+        return hotelManagementGrpcClient.removeStaff(staffId);
+    }
+
+    public boolean addHotelMenu(String hotelKey, MenuItemManagementDto dto) {
+        return hotelManagementGrpcClient.createMenuItem(hotelKey, dto);
+    }
+
+    public boolean deleteHotelMenu(String itemId) {
+        return hotelManagementGrpcClient.removeMenuItem(itemId);
+    }
+
+    public boolean addHotelTicket(String hotelKey, TicketManagementDto dto) {
+        return hotelManagementGrpcClient.createManualTicket(hotelKey, dto);
+    }
+
+    public boolean deleteHotelTicket(String ticketId) {
+        return hotelManagementGrpcClient.removeTicket(ticketId);
+    }
 }

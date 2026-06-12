@@ -106,18 +106,15 @@ public class IncidentEmbeddingService {
         return scoredDocs.stream()
                 .map(sd -> {
                     Map<String, Object> meta = new HashMap<>();
-                    meta.put("score", sd.getScore());
                     meta.put("searchType", sd.getSearchType());
-
-                    // Твои оригинальные логи оценки мы бережно сохраняем для вывода в консоль
-                    log.info("score: {}", sd.getScore());
-
-                    // Защита от NullPointerException: если текст пуст, пишем ""
                     String textContent = sd.getText() != null ? sd.getText() : "";
 
-                    // ИСПРАВЛЕНИЕ: Передаем sd.getId() ПЕРВЫМ параметром!
-                    // Теперь Spring AI сохранит реальный UUID точки из Qdrant, и он долетит до админки
-                    return new Document(sd.getId(), textContent, meta);
+                    return Document.builder()
+                            .id(sd.getId())
+                            .text(textContent)
+                            .metadata(meta)
+                            .score((double) sd.getScore())
+                            .build();
                 })
                 .collect(Collectors.toList());
     }
@@ -144,40 +141,30 @@ public class IncidentEmbeddingService {
         String mainColl = getMainCollection(hotelKey);
         String statsColl = getStatsCollection(hotelKey);
 
-        // =========================================================================
-        // 🌟 РЕЖИМ АТОМАРНОЙ ПЕРЕЗАПИСИ (OVERWRITE)
-        // =========================================================================
         if ("OVERWRITE".equalsIgnoreCase(mode)) {
-            log.warn("⚠️ Обнаружен режим OVERWRITE для отеля {}. Начинается каскадная очистка старых чанков...", hotelKey);
+            log.warn("Обнаружен режим OVERWRITE для отеля {}. Начинается каскадная очистка старых чанков...", hotelKey);
             try {
-                // 1. Создаем фильтр Qdrant для удаления точек: tenant_id == hotelKey
                 io.qdrant.client.grpc.Points.Filter tenantFilter = io.qdrant.client.grpc.Points.Filter.newBuilder()
                         .addMust(io.qdrant.client.grpc.Points.Condition.newBuilder()
                                 .setField(io.qdrant.client.grpc.Points.FieldCondition.newBuilder()
-                                        .setKey("tenant_id") // Фильтруем строго по твоему мета-полю в Payload
+                                        .setKey("tenant_id")
                                         .setMatch(io.qdrant.client.grpc.Points.Match.newBuilder()
                                                 .setKeyword(hotelKey)
                                                 .build())
                                         .build())
                                 .build())
                         .build();
-
-                // 2. Асинхронно удаляем все старые чанки отеля из плотной коллекции Qdrant
                 qdrantClient.deleteAsync(mainColl, tenantFilter).get();
-                log.info("✅ Старые чанки отеля {} успешно удалены из коллекции Qdrant: {}", hotelKey, mainColl);
+                log.info("Старые чанки отеля {} успешно удалены из коллекции Qdrant: {}", hotelKey, mainColl);
 
-                // 3. Сбрасываем частотные словари BM25, чтобы статистика ключевого поиска не искажалась старыми текстами
                 bm25Tokenizer.clearCollectionStats(statsColl);
-                log.info("✅ Локальная статистика BM25 для коллекции {} успешно очищена", statsColl);
+                log.info("Локальная статистика BM25 для коллекции {} успешно очищена", statsColl);
 
             } catch (Exception e) {
-                log.error("❌ Критическая ошибка при очистке пространства Qdrant перед OVERWRITE: {}", e.getMessage());
+                log.error("Критическая ошибка при очистке пространства Qdrant перед OVERWRITE: {}", e.getMessage());
                 throw new RuntimeException("Не удалось атомарно очистить старую базу знаний тенанта: " + e.getMessage(), e);
             }
         }
-        // =========================================================================
-
-        // Твой стандартный конвейер извлечения и чанкования текста
         String cleanText = pdfTextExtractor.extractText(pdfBytes);
         ChunkingResult result = chunkRouter.processText(cleanText);
 
@@ -192,11 +179,11 @@ public class IncidentEmbeddingService {
             Map<String, Object> metadata = Map.of("tags", tags, "source", "pdf", "tenant_id", hotelKey);
             Document doc = new Document(chunk, metadata);
 
-            // Плотный вектор (Dense) добавляется через Spring AI QdrantVectorStore
             store.doAdd(List.of(doc));
-
-            // Обновление разреженного пространства (Sparse / BM25)
-            bm25Tokenizer.indexDocument(statsColl, doc.getId(), chunk);
+            String lockKey = hotelKey.intern();
+            synchronized (lockKey) {
+                bm25Tokenizer.indexDocument(statsColl, doc.getId(), chunk);
+            }
             sparseBatch.add(prepareSparseVector(statsColl, doc.getId(), chunk));
         }
 
@@ -289,21 +276,14 @@ public class IncidentEmbeddingService {
 
         try {
             log.info("Старт точечной мутации чанка {}. Новый текст: {}", chunkId, newText);
-
-            // 1. Генерируем новый Dense-вектор через нашу embedding-модель (прокси к Rust TEI)
             org.springframework.ai.document.Document docWrapper = new org.springframework.ai.document.Document(newText);
             float[] newDenseVector = remoteEmbeddingModel.embed(docWrapper);
-
             List<Float> vectorList = new ArrayList<>();
             for (float v : newDenseVector) vectorList.add(v);
-
-            // 2. Формируем обновленный Payload
             Map<String, Value> payload = new HashMap<>();
             payload.put("doc_content", Value.newBuilder().setStringValue(newText).build());
             payload.put("tenant_id", Value.newBuilder().setStringValue(hotelKey).build());
             payload.put("source", Value.newBuilder().setStringValue("pdf_edited").build());
-
-            // 3. Перезаписываем Dense-вектор и Payload под тем же самым ID (UUID)
             qdrantClient.upsertAsync(mainColl, List.of(
                     PointStruct.newBuilder()
                             .setId(PointId.newBuilder().setUuid(chunkId).build())
@@ -313,12 +293,7 @@ public class IncidentEmbeddingService {
                             .putAllPayload(payload)
                             .build()
             )).get();
-
-            // 4. Стираем старую и пишем новую статистику частоты слов для BM25
-            // (Stateless токенизатор атомарно обновит глобальные счетчики в служебной коллекции отеля)
             bm25Tokenizer.indexDocument(statsColl, chunkId, newText);
-
-            // 5. Пересчитываем и перезаписываем Sparse-вектор (BM25) в основной коллекции
             PointVectors updatedSparseVector = prepareSparseVector(statsColl, chunkId, newText);
             qdrantClient.updateVectorsAsync(mainColl, List.of(updatedSparseVector)).get();
 

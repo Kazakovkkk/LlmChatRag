@@ -144,6 +144,68 @@ public class BM25StatsRepository {
                         .build())
         ).get();
     }
+    // Добавьте/обновите методы в BM25StatsRepository.java
 
+    /**
+     * Пакетное извлечение частот для множества слов за ОДИН сетевой запрос
+     */
+    public Map<String, Integer> loadTermFrequenciesBatch(String statsCollection, Set<String> terms) {
+        if (terms.isEmpty()) return Map.of();
+
+        // Формируем список gRPC PointId на основе хэшей слов
+        List<PointId> ids = terms.stream()
+                .map(term -> PointId.newBuilder()
+                        .setUuid(UUID.nameUUIDFromBytes(term.getBytes()).toString())
+                        .build())
+                .toList();
+        try {
+            // Делаем один асинхронный вызов для всей пачки ID и блокируем поток только ОДИН раз
+            List<RetrievedPoint> points = qdrantClient.retrieveAsync(
+                    statsCollection, ids, true, false, null
+            ).get();
+
+            Map<String, Integer> freqs = new HashMap<>();
+            for (RetrievedPoint p : points) {
+                Map<String, Value> payload = p.getPayloadMap();
+                if (payload.containsKey("term") && payload.containsKey("frequency")) {
+                    freqs.put(
+                            payload.get("term").getStringValue(),
+                            (int) payload.get("frequency").getIntegerValue()
+                    );
+                }
+            }
+            return freqs;
+        } catch (Exception e) {
+            log.error("❌ Ошибка пакетного чтения частот слов из Qdrant: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Пакетный апсерт (сохранение) списка точек за ОДИН сетевой запрос
+     */
+    public void upsertPointsBatch(String collection, List<PointStruct> points) {
+        if (points.isEmpty()) return;
+        try {
+            // Передаем весь список точек в один gRPC-вызов
+            qdrantClient.upsertAsync(collection, points).get();
+        } catch (Exception e) {
+            log.error("❌ Ошибка пакетной записи (upsert) в Qdrant: {}", e.getMessage());
+            throw new RuntimeException("Не удалось сохранить пакет статистических данных BM25", e);
+        }
+    }
+
+    /**
+     * Вспомогательный метод для сборки PointStruct служебной статистики
+     */
+    public PointStruct buildServicePoint(String uuid, Map<String, Value> payload) {
+        return PointStruct.newBuilder()
+                .setId(PointId.newBuilder().setUuid(uuid).build())
+                .setVectors(Vectors.newBuilder()
+                        .setVector(io.qdrant.client.grpc.Points.Vector.newBuilder().addAllData(List.of(1.0f)).build()) // заглушка
+                        .build())
+                .putAllPayload(payload)
+                .build();
+    }
     public record GlobalStatsMeta(int totalDocuments, double avgDocumentLength) {}
 }
