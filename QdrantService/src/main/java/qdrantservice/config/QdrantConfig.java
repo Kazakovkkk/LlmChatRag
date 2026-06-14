@@ -11,7 +11,7 @@ public class QdrantConfig {
 
     @Value("${qdrant.host:localhost}")
     private String qdrantHost;
-
+    //docker start qdrant
     @Value("${qdrant.port:6334}")
     private int qdrantPort;
 

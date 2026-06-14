@@ -29,7 +29,7 @@ public class LlmGrpcClient {
     }
     public Flux<String> answerStream(AnswerRequest request) {
         long start = System.currentTimeMillis();
-        log.info("⏱ gRPC answerStream начало | вопрос: '{}'", request.getQuestion());
+        //log.info("⏱ gRPC answerStream начало | вопрос: '{}'", request.getQuestion());
 
         List<MessageProto> historyProto = request.getHistory() != null
                 ? request.getHistory().stream()
@@ -63,8 +63,8 @@ public class LlmGrpcClient {
 
                 @Override
                 public void onCompleted() {
-                    log.info("⏱ gRPC answerStream завершён | {} мс",
-                            System.currentTimeMillis() - start);
+                    //log.info("⏱ gRPC answerStream завершён | {} мс",
+                            //System.currentTimeMillis() - start);
                     sink.complete();
                 }
             });

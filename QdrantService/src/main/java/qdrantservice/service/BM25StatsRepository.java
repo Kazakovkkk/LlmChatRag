@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Repository
@@ -20,6 +21,10 @@ public class BM25StatsRepository {
     // Глобальные константы ID для системных настроек внутри коллекции статистики тенанта
     private static final String GLOBAL_STATS_POINT_ID = "00000000-0000-0000-0000-000000000001";
     private static final String DOC_LENGTHS_PREFIX_ID = "10000000-0000-0000-0000-";
+    private final Map<String, CachedGlobalStats> globalStatsCache = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_MS = 30_000;
+
+    private record CachedGlobalStats(GlobalStatsMeta meta, long expiresAt) {}
 
     public void deleteCollectionStats(String statsCollection) {
         log.warn("🗑️ Запуск очистки репозитория BM25. Удаление всех статистических точек в коллекции Qdrant: {}", statsCollection);
@@ -81,6 +86,11 @@ public class BM25StatsRepository {
     }
 
     public Optional<GlobalStatsMeta> loadGlobalStats(String statsCollection) {
+        CachedGlobalStats cached = globalStatsCache.get(statsCollection);
+        if (cached != null && System.currentTimeMillis() < cached.expiresAt()) {
+            return Optional.of(cached.meta());
+        }
+
         try {
             List<RetrievedPoint> points = qdrantClient.retrieveAsync(
                     statsCollection,
@@ -94,7 +104,9 @@ public class BM25StatsRepository {
             int totalDocs = (int) payload.get("total_documents").getIntegerValue();
             double avgLen = payload.get("avg_document_length").getDoubleValue();
 
-            return Optional.of(new GlobalStatsMeta(totalDocs, avgLen));
+            GlobalStatsMeta meta = new GlobalStatsMeta(totalDocs, avgLen);
+            globalStatsCache.put(statsCollection, new CachedGlobalStats(meta, System.currentTimeMillis() + CACHE_TTL_MS));
+            return Optional.of(meta);
         } catch (Exception e) {
             return Optional.empty();
         }

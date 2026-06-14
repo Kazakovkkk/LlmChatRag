@@ -54,6 +54,13 @@ public class LlmController {
                 request.getContext()
         );
     }
+    @PostMapping("/answer/test")
+    public Mono<String> answer_test(@RequestBody AnswerRequest request) {
+        return answerService.generateAnswer_test(
+                request.getQuestion(),
+                request.getContext()
+        );
+    }
 
     @GetMapping("/health")
     public String health() {

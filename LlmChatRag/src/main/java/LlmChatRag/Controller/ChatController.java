@@ -10,6 +10,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 //http://localhost:8080/?hotel=cosmos
+//jmeter -n -t Thread_Group_RAG.jmx -l results_50.jtl -e -o report_50
 @RestController
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
@@ -23,6 +24,12 @@ public class ChatController {
         return ragChatService.chat(request.getMessage(), request.getHotelKey(),
                 request.getHistory() != null ? request.getHistory() : List.of() );
     }
+    @PostMapping(value = "/test_fine")
+    public String chattest(@RequestBody ChatRequest request) {
+        return ragChatService.chat_test(request.getMessage(), request.getHotelKey(),
+                request.getHistory() != null ? request.getHistory() : List.of() );
+    }
+
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> chatStream(@RequestBody ChatRequest request) {
@@ -39,7 +46,7 @@ public class ChatController {
     public List<LlmChatRag.dto.MessageDto> getChatHistory(
             @RequestParam String hotelKey,
             @RequestParam String chatId) {
-        log.info("📥 Запрос на восстановление истории для отеля: {}, сессия: {}", hotelKey, chatId);
+        //log.info("📥 Запрос на восстановление истории для отеля: {}, сессия: {}", hotelKey, chatId);
         return ragChatService.getChatHistoryFromAdmin(hotelKey, chatId);
     }
 

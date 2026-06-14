@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -16,6 +17,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +34,7 @@ public class RagChatService {
     private final ObjectMapper objectMapper;
     private final LlmPreprocessorRouter preprocessorRouter; // ← Вместо прямого RestClient llmRestClient для препроцессинга
     private final HotelActionRouter hotelActionRouter;     // ← Добавляем роутер действий
+    private final ExecutorService searchExecutor;
 
     public RagChatService(
             @Qualifier("llmRestClient") RestClient llmRestClient,
@@ -38,9 +42,10 @@ public class RagChatService {
             DocumentRankingService rankingService,
             SearchRouter searchRouter,
             LlmStreamRouter llmStreamRouter,
-            LlmPreprocessorRouter preprocessorRouter, // Инжект
-            HotelActionRouter hotelActionRouter,     // Инжект
-            ObjectMapper objectMapper
+            LlmPreprocessorRouter preprocessorRouter,
+            HotelActionRouter hotelActionRouter,
+            ObjectMapper objectMapper,
+            ExecutorService searchExecutor // НОВОЕ
     ) {
         this.llmRestClient = llmRestClient;
         this.adminRestClient = adminRestClient;
@@ -50,17 +55,18 @@ public class RagChatService {
         this.preprocessorRouter = preprocessorRouter;
         this.hotelActionRouter = hotelActionRouter;
         this.objectMapper = objectMapper;
+        this.searchExecutor = searchExecutor;
     }
 
     public String chat(String userQuestion, String hotelKey, List<MessageDto> history) {
         try {
             // Шаг 1: Препроцессинг вопроса → llm-service
             PreprocessedQuestion processed = preprocessQuestion(userQuestion, history);
-            log.info("Preprocessed question: {}", processed.getNormalized());
+            //log.info("Preprocessed question: {}", processed.getNormalized());
 
             // Шаг 2: Поиск документов → qdrant-service
             List<DocumentDto> documents = searchDocuments(hotelKey, processed);
-            log.info("Found {} documents", documents.size());
+            //log.info("Found {} documents", documents.size());
 
             // Шаг 3: Ранжирование
             List<DocumentDto> topDocs = rankingService.getTopK(documents, 5);
@@ -224,37 +230,67 @@ public class RagChatService {
     private List<DocumentDto> searchDocuments(String hotelKey, PreprocessedQuestion processed) {
         List<String> allQueries = new ArrayList<>();
         allQueries.add(processed.getNormalized());
-        if (processed.getAlternatives() != null){
+        if (processed.getAlternatives() != null) {
             allQueries.addAll(processed.getAlternatives());
         }
-        List<DocumentDto> allDocuments = new ArrayList<>();
+
         log.info("То что передаётся в запрос в qdrant: {}", allQueries);
-        for (String query : allQueries) {
-            try {
-                // ← теперь через роутер
-                List<DocumentDto> docs = searchRouter.search(hotelKey, query, 5);
-                if (docs != null && !docs.isEmpty()) {
-                    log.info("=== Запрос: '{}' | Найдено документов: {} ===", query, docs.size());
-                    docs.forEach(doc -> log.info(
-                            "ID: {} | Score: {} | Text: {}",
-                            doc.getId(),
-                            doc.getScore(),
-                            doc.getText()
-                    ));
-                    allDocuments.addAll(docs);
-                } else {
-                    log.warn("Запрос '{}' вернул пустой результат", query);
-                }
 
-            } catch (Exception e) {
-                log.warn("Ошибка поиска для запроса '{}': {}", query, e.getMessage());
-            }
-        }
+        // Запускаем все запросы параллельно
+        List<CompletableFuture<List<DocumentDto>>> futures = allQueries.stream()
+                .map(query -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        List<DocumentDto> docs = searchRouter.search(hotelKey, query, 5);
+                        if (docs != null && !docs.isEmpty()) {
+                            log.info("=== Запрос: '{}' | Найдено документов: {} ===", query, docs.size());
+                            docs.forEach(doc -> log.info(
+                                    "ID: {} | Score: {} | Text: {}",
+                                    doc.getId(), doc.getScore(), doc.getText()
+                            ));
+                            return docs;
+                        } else {
+                            log.warn("Запрос '{}' вернул пустой результат", query);
+                            return List.<DocumentDto>of();
+                        }
+                    } catch (Exception e) {
+                        log.warn("Ошибка поиска для запроса '{}': {}", query, e.getMessage());
+                        return List.<DocumentDto>of();
+                    }
+                }, searchExecutor))
+                .toList();
 
-        log.info("=== Итого документов до ранжирования: {} ===", allDocuments.size());
+        // Дожидаемся всех (CompletableFuture.allOf под капотом через join)
+        List<DocumentDto> allDocuments = futures.stream()
+                .map(CompletableFuture::join)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+
+        //log.info("=== Итого документов до ранжирования: {} ===", allDocuments.size());
         return allDocuments;
     }
+    public String chat_test(String userQuestion, String hotelKey, List<MessageDto> history) {
+        try {
+            // Шаг 1: Препроцессинг вопроса → llm-service
+            PreprocessedQuestion processed = preprocessQuestion(userQuestion, history);
+            //log.info("Preprocessed question: {}", processed.getNormalized());
+            List<String> allQueries = new ArrayList<>();
+            StringBuilder context = new StringBuilder();
+            allQueries.add(processed.getNormalized());
+            if (processed.getAlternatives() != null) {
+                allQueries.addAll(processed.getAlternatives());
+                for (String allQuery : allQueries) {
+                    context.append(allQuery);
+                }
+            }
 
+            // Шаг 5: Генерация ответа → llm-service
+            return generateAnswer(userQuestion, context.toString());
+
+        } catch (Exception e) {
+            log.error("Ошибка в RAG pipeline: {}", e.getMessage());
+            return "Извините, произошла ошибка: " + e.getMessage();
+        }
+    }
     private String generateAnswer(String question, String context) {
         return llmRestClient.post()
                 .uri("/llm/answer")
@@ -274,7 +310,7 @@ public class RagChatService {
                                 .body(payload)
                                 .retrieve()
                                 .toBodilessEntity();
-                        log.debug("♻️ Лог [{}] успешно синхронизирован с базой данных AdminPanel", role);
+                        //log.debug("♻️ Лог [{}] успешно синхронизирован с базой данных AdminPanel", role);
                     } catch (Exception e) {
                         log.error("⚠️ Не удалось отправить реплику в AdminPanel (база данных аудита недоступна): {}", e.getMessage());
                     }
@@ -291,7 +327,7 @@ public class RagChatService {
                             .queryParam("chatId", chatId)
                             .build())
                     .retrieve()
-                    .body(new org.springframework.core.ParameterizedTypeReference<>() {});
+                    .body(new ParameterizedTypeReference<>() {});
 
             if (rawHistory == null) return List.of();
 

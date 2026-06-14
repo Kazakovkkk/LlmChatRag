@@ -26,7 +26,7 @@ public class HotelActionRouter {
     }
 
     public ActionResponse execute(ActionRequest request) {
-        log.info("⏱ Маршрутизация действия отеля [Action: {}, Protocol: {}]", request.getActionName(), protocol.toUpperCase());
+        //log.info("⏱ Маршрутизация действия отеля [Action: {}, Protocol: {}]", request.getActionName(), protocol.toUpperCase());
 
         if ("grpc".equalsIgnoreCase(protocol)) {
             return actionGrpcClient.executeAction(request);

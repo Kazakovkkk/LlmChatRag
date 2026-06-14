@@ -13,10 +13,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Service
@@ -27,6 +29,8 @@ public class GigaChatService {
     private final String authKey; // Ключ авторизации (Client Secret из личного кабинета)
     private final String model;
     private final String scope;
+    private final AtomicReference<Mono<String>> tokenMonoRef = new AtomicReference<>();
+
 
     // Кэш токена в памяти приложения (токен живет 30 минут)
     private String cachedToken = null;
@@ -49,36 +53,50 @@ public class GigaChatService {
      * Получение или реактивное обновление OAuth-токена
      */
     private Mono<String> getAccessToken() {
-        // Если токен есть и он будет валиден еще как минимум 1 минуту — берем из кэша
-        if (cachedToken != null && System.currentTimeMillis() < tokenExpiresAt - 60000) {
-            return Mono.just(cachedToken);
-        }
+        // Создаём кэшируемый Mono лениво, ровно один раз
+        return tokenMonoRef.updateAndGet(existing ->
+                existing != null ? existing : createCachedTokenMono()
+        );
+    }
 
-        log.info("🔄 Запрос нового OAuth токена GigaChat...");
-        return webClient.post()
-                .uri("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
-                .header("Authorization", "Basic " + authKey) // Да, у Сбера префикс именно Bearer для базового ключа
-                .header("RqUID", UUID.randomUUID().toString()) // Требуется уникальный UUID на каждый запрос
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(BodyInserters.fromFormData("scope", scope))
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(response -> {
-                    try {
-                        JsonNode node = objectMapper.readTree(response);
-                        cachedToken = node.path("access_token").asText();
-                        tokenExpiresAt = node.path("expires_at").asLong();
-                        log.info("✅ OAuth токен GigaChat успешно обновлен");
-                        return cachedToken;
-                    } catch (Exception e) {
-                        throw new RuntimeException("Ошибка парсинга токена GigaChat: " + e.getMessage());
-                    }
+    private Mono<String> createCachedTokenMono() {
+        Mono<String> tokenMono = Mono.defer(() -> {
+            //log.info("🔄 Запрос нового OAuth токена GigaChat...");
+            return webClient.post()
+                    .uri("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
+                    .header("Authorization", "Basic " + authKey)
+                    .header("RqUID", UUID.randomUUID().toString())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData("scope", scope))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .map(response -> {
+                        try {
+                            JsonNode node = objectMapper.readTree(response);
+                            String token = node.path("access_token").asText();
+                            //log.info("✅ OAuth токен GigaChat успешно обновлен");
+                            return token;
+                        } catch (Exception e) {
+                            throw new RuntimeException("Ошибка парсинга токена GigaChat: " + e.getMessage());
+                        }
+                    });
+        });
+
+        return tokenMono.cache(
+                        value -> Duration.ofMinutes(25), // успешный токен кэшируем на 25 минут
+                        error -> Duration.ZERO,          // ошибки не кэшируем
+                        () -> Duration.ZERO              // empty (на всякий случай) тоже не кэшируем
+                )
+                .doOnError(e -> {
+                    // сбрасываем ссылку, чтобы следующий вызов пересоздал Mono и попробовал заново
+                    tokenMonoRef.set(null);
+                    log.error("❌ Ошибка получения OAuth токена GigaChat: {}", e.getMessage());
                 });
     }
 
     public Mono<String> chat(String prompt) {
         return getAccessToken().flatMap(token -> {
-            log.info("GigaChat chat | Модель: {}", model);
+            //log.info("GigaChat chat | Модель: {}", model);
 
             List<Map<String, String>> messages = List.of(
                     Map.of("role", "user", "content", prompt)
@@ -103,7 +121,7 @@ public class GigaChatService {
 
     public Flux<String> chatStream(String prompt) {
         return getAccessToken().flatMapMany(token -> {
-            log.info("GigaChat stream | Модель: {}", model);
+            //log.info("GigaChat stream | Модель: {}", model);
 
             List<Map<String, String>> messages = List.of(
                     Map.of("role", "user", "content", prompt)

@@ -34,7 +34,7 @@ public class LlmStreamRouter {
     }
 
     public Flux<String> stream(AnswerRequest request) {
-        log.info("⏱ LLM стриминг | Protocol: {}", protocol.toUpperCase());
+        //log.info("⏱ LLM стриминг | Protocol: {}", protocol.toUpperCase());
 
         return switch (protocol) {
             case "grpc" -> streamViaGrpc(request);
@@ -47,7 +47,7 @@ public class LlmStreamRouter {
     }
 
     private Flux<String> streamViaGrpc(AnswerRequest request) {
-        log.info("→ gRPC stream | вопрос: '{}'", request.getQuestion());
+        //log.info("→ gRPC stream | вопрос: '{}'", request.getQuestion());
         long start = System.currentTimeMillis();
 
         return llmGrpcClient.answerStream(request)
@@ -58,12 +58,13 @@ public class LlmStreamRouter {
                         return "{\"token\":\"\"}";
                     }
                 })
-                .doOnComplete(() -> log.info("gRPC stream завершён | {} мс",
-                        System.currentTimeMillis() - start));
+               //.doOnComplete(() -> log.info("gRPC stream завершён | {} мс",
+                        //System.currentTimeMillis() - start))
+                ;
     }
 
     private Flux<String> streamViaRest(AnswerRequest request) {
-        log.info("REST stream вопрос: '{}'", request.getQuestion());
+        //log.info("REST stream вопрос: '{}'", request.getQuestion());
         long start = System.currentTimeMillis();
 
         return llmWebClient.post()
@@ -72,7 +73,8 @@ public class LlmStreamRouter {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToFlux(String.class)
-                .doOnComplete(() -> log.info("REST stream завершён {} мс",
-                        System.currentTimeMillis() - start));
+                //.doOnComplete(() -> log.info("REST stream завершён {} мс",
+                        //System.currentTimeMillis() - start))
+        ;
     }
 }

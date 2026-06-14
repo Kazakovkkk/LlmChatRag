@@ -20,6 +20,7 @@ import io.qdrant.client.grpc.JsonWithInt.Value;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,6 +35,7 @@ public class IncidentEmbeddingService {
     private final HybridSearchService hybridSearchService;
     private final EmbeddingModel remoteEmbeddingModel;
 
+    private final Set<String> initializedTenants = ConcurrentHashMap.newKeySet();
     // Генерация изолированных системных имен коллекций для Qdrant
     private String getMainCollection(String hotelKey) {
         return "hotel_" + hotelKey.toLowerCase().replaceAll("[^a-z0-9]", "_");
@@ -43,43 +45,56 @@ public class IncidentEmbeddingService {
         return "bm25_stats_hotel_" + hotelKey.toLowerCase().replaceAll("[^a-z0-9]", "_");
     }
 
+
     private void initTenantInfrastructureIfNeeded(String hotelKey) {
-        String mainColl = getMainCollection(hotelKey);
-        String statsColl = getStatsCollection(hotelKey);
+        // Быстрая проверка без блокировок и без сети
+        if (initializedTenants.contains(hotelKey)) {
+            return;
+        }
 
-        try {
-            List<String> activeCollections = qdrantClient.listCollectionsAsync().get();
+        // Только если тенант ещё не инициализирован — берём лок ПОТЕНЦИАЛЬНО медленной операции
+        synchronized (hotelKey.intern()) {
+            if (initializedTenants.contains(hotelKey)) return; // другой поток уже сделал
 
-            if (!activeCollections.contains(mainColl)) {
-                log.info("🚀 Разворачиваем основную коллекцию для нового тенанта: {}", mainColl);
-                qdrantClient.createCollectionAsync(
-                        CreateCollection.newBuilder()
-                                .setCollectionName(mainColl)
-                                .setVectorsConfig(VectorsConfig.newBuilder()
-                                        .setParams(VectorParams.newBuilder().setSize(768).setDistance(Distance.Cosine).build())
-                                        .build())
-                                .setSparseVectorsConfig(SparseVectorConfig.newBuilder()
-                                        .putMap("sparse", SparseVectorParams.newBuilder()
-                                                .setIndex(SparseIndexConfig.newBuilder().setFullScanThreshold(5000).build())
-                                                .build())
-                                        .build())
-                                .build()
-                ).get();
+            String mainColl = getMainCollection(hotelKey);
+            String statsColl = getStatsCollection(hotelKey);
+
+            try {
+                List<String> activeCollections = qdrantClient.listCollectionsAsync().get();
+
+                if (!activeCollections.contains(mainColl)) {
+                    log.info("🚀 Разворачиваем основную коллекцию для нового тенанта: {}", mainColl);
+                    qdrantClient.createCollectionAsync(
+                            CreateCollection.newBuilder()
+                                    .setCollectionName(mainColl)
+                                    .setVectorsConfig(VectorsConfig.newBuilder()
+                                            .setParams(VectorParams.newBuilder().setSize(768).setDistance(Distance.Cosine).build())
+                                            .build())
+                                    .setSparseVectorsConfig(SparseVectorConfig.newBuilder()
+                                            .putMap("sparse", SparseVectorParams.newBuilder()
+                                                    .setIndex(SparseIndexConfig.newBuilder().setFullScanThreshold(5000).build())
+                                                    .build())
+                                            .build())
+                                    .build()
+                    ).get();
+                }
+
+                if (!activeCollections.contains(statsColl)) {
+                    log.info("🚀 Разворачиваем служебную коллекцию лингвистической статистики для: {}", statsColl);
+                    qdrantClient.createCollectionAsync(
+                            CreateCollection.newBuilder()
+                                    .setCollectionName(statsColl)
+                                    .setVectorsConfig(VectorsConfig.newBuilder()
+                                            .setParams(VectorParams.newBuilder().setSize(1).setDistance(Distance.Cosine).build())
+                                            .build())
+                                    .build()
+                    ).get();
+                }
+
+                initializedTenants.add(hotelKey); // помечаем как готовый
+            } catch (Exception e) {
+                throw new RuntimeException("Критическая ошибка инициализации SaaS инфраструктуры для " + hotelKey, e);
             }
-
-            if (!activeCollections.contains(statsColl)) {
-                log.info("🚀 Разворачиваем служебную коллекцию лингвистической статистики для: {}", statsColl);
-                qdrantClient.createCollectionAsync(
-                        CreateCollection.newBuilder()
-                                .setCollectionName(statsColl)
-                                .setVectorsConfig(VectorsConfig.newBuilder()
-                                        .setParams(VectorParams.newBuilder().setSize(1).setDistance(Distance.Cosine).build())
-                                        .build())
-                                .build()
-                ).get();
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Критическая ошибка инициализации SaaS инфраструктуры для " + hotelKey, e);
         }
     }
 

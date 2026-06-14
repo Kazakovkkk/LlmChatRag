@@ -31,7 +31,7 @@ public class SearchRouter {
     }
 
     public List<DocumentDto> search(String hotelKey, String query, int limit) {
-        log.info("⏱ Маршрутизация поиска RAG [Hotel: {}, Protocol: {}] | Запрос: '{}'", hotelKey, protocol.toUpperCase(), query);
+        //log.info("⏱ Маршрутизация поиска RAG [Hotel: {}, Protocol: {}] | Запрос: '{}'", hotelKey, protocol.toUpperCase(), query);
         return "rest".equalsIgnoreCase(protocol) ? searchViaRest(hotelKey, query, limit) : searchViaGrpc(hotelKey, query, limit);
     }
 

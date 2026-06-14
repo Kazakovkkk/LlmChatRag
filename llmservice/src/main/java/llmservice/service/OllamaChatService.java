@@ -29,14 +29,14 @@ public class OllamaChatService {
 
         messages.add(Map.of(
                 "role", "system",
-                "content", "Ты ассистент отеля. Отвечай на том же языке на котором задан вопрос. Даавай ответ, если он есть в контексте"
+                "content", "Ты ассистент отеля"
         ));
 
 
         messages.add(Map.of("role", "user", "content", prompt));
 
         Map<String, Object> request = Map.of(
-                "model", "gemma3:4b",
+                "model", "hotel-qwen",
                 "messages", messages,
                 "stream", true
         );
@@ -51,7 +51,7 @@ public class OllamaChatService {
 
     public Mono<String> chat(String prompt) {
         Map<String, Object> request = Map.of(
-                "model", "gemma3:4b",
+                "model", "hotel-qwen",
                 "messages", List.of(Map.of("role", "user", "content", prompt)),
                 "stream", false
         );

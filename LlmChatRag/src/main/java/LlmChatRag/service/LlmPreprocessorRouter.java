@@ -30,7 +30,7 @@ public class LlmPreprocessorRouter {
     }
 
     public PreprocessedQuestion preprocess(String question, List<MessageDto> history) {
-        log.info("⏱ Маршрутизация препроцессинга [Protocol: {}] | Вопрос: '{}'", protocol.toUpperCase(), question);
+       // log.info("⏱ Маршрутизация препроцессинга [Protocol: {}] | Вопрос: '{}'", protocol.toUpperCase(), question);
 
         if ("grpc".equalsIgnoreCase(protocol)) {
             return llmGrpcClient.preprocessQuestion(question, history);

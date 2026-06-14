@@ -56,6 +56,20 @@ public class AnswerGenerationService {
       чтобы понять о чём речь, и дай конкретный ответ с временем.
     - Никогда не смешивай языки в одном ответе.
     """;
+    private static final String AG_SYSTEM_PROMPT_chat_test = """
+    Ты ассистент отеля который отвечает на вопросы гостей.
+    На вход получаешь:
+    1) Вопрос пользователя.
+    2) Альтернативные варианты вопроса полученные после нормализации и анализа истории общения
+    ПРАВИЛА:
+    - ВАЖНО: отвечай на том же языке на котором задан Текущий вопрос гостя - самое главное на каком языке он.
+      Если вопрос на русском — отвечай на русском.
+      Если вопрос на английском — отвечай на английском.
+      Если вопрос на китайском — отвечай на китайском.
+    - Если вопрос 'а после него?' или 'во сколько?' — используй историю беседы
+      чтобы понять о чём речь, и дай конкретный ответ с временем.
+    - Никогда не смешивай языки в одном ответе.
+    """;
 
     private final LlmRouter llmRouter;
 
@@ -99,13 +113,13 @@ public class AnswerGenerationService {
                 + "Контекст из базы знаний:\n'''\n" + context + "\n'''\n\n"
                 + "ВАЖНО: контекст из базы знаний является истиной. "
                 + "Если история беседы противоречит контексту — доверяй контексту.";
-
+        /*
         log.info("=== ПРОМПТ ДЛЯ LLM ===");
         log.info("Время: {}", timeContext.trim());
         log.info("Вопрос: {}", userQuestion);
         log.info("Контекст: {}", context);
         log.info("История ({} сообщений):", history != null ? history.size() : 0);
-
+        */
         return llmRouter.chatStream(prompt);
     }
 
@@ -113,10 +127,20 @@ public class AnswerGenerationService {
         String prompt = AG_SYSTEM_PROMPT_chat + "\n\n"
                 + "Вопрос пользователя: " + userQuestion + "\n\n"
                 + "Контекст документов:\n'''\n" + context + "\n'''";
+        /*
         log.info("Вопрос пользователя: {}", userQuestion);
         log.info("Контекст беседы: {}", context);
-
+        */
         return llmRouter.chat(prompt);
     }
-
+    public Mono<String> generateAnswer_test(String userQuestion, String context) {
+        String prompt = AG_SYSTEM_PROMPT_chat_test + "\n\n"
+                + "Вопрос пользователя: " + userQuestion + "\n\n"
+                + "Альтернативные варианты вопроса полученные после нормализации и анализа истории общения:\n'''\n" + context + "\n'''";
+        /*
+        log.info("Вопрос пользователя: {}", userQuestion);
+        log.info("Контекст беседы: {}", context);
+        */
+        return llmRouter.chat(prompt);
+    }
 }

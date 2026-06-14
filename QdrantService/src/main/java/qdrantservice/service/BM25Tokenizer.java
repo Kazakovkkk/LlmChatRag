@@ -95,15 +95,20 @@ public class BM25Tokenizer {
         List<String> terms = tokenizeToTerms(text);
         if (terms.isEmpty()) return Map.of();
 
-        int docLength = isDocument ? terms.size() : statsRepository.loadDocumentLength(statsCollection, documentId);
-
         Map<String, Integer> termFreq = new HashMap<>();
         for (String term : terms) {
             termFreq.merge(term, 1, Integer::sum);
         }
 
+        // docLength нужен только для документа (BM25-нормализация tf), для запроса не используется
+        int docLength = isDocument ? terms.size() : 0;
+
+        // ОДИН пакетный запрос вместо N точечных
+        Map<String, Integer> dfMap = statsRepository.loadTermFrequenciesBatch(statsCollection, termFreq.keySet());
+
         Map<Integer, Float> sparseVector = new HashMap<>();
-        var globalMeta = statsRepository.loadGlobalStats(statsCollection).orElse(new BM25StatsRepository.GlobalStatsMeta(1, 1.0));
+        var globalMeta = statsRepository.loadGlobalStats(statsCollection)
+                .orElse(new BM25StatsRepository.GlobalStatsMeta(1, 1.0));
 
         int N = Math.max(globalMeta.totalDocuments(), 1);
         double avgDL = Math.max(globalMeta.avgDocumentLength(), 1.0);
@@ -112,7 +117,7 @@ public class BM25Tokenizer {
             String term = entry.getKey();
             int tf = entry.getValue();
 
-            int df = statsRepository.loadTermFrequency(statsCollection, term);
+            int df = dfMap.getOrDefault(term, 0);
             double idf = Math.log((N - df + 0.5) / (df + 0.5) + 1.0);
 
             float score;
