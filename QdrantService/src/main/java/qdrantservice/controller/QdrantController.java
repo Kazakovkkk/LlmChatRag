@@ -1,5 +1,6 @@
 package qdrantservice.controller;
 
+import qdrantservice.dto.BatchSearchRequest;
 import qdrantservice.dto.SearchRequest;
 import qdrantservice.dto.StoreRequest;
 import qdrantservice.service.IncidentEmbeddingService;
@@ -50,7 +51,29 @@ public class QdrantController {
             return ResponseEntity.internalServerError().build();
         }
     }
+    @PostMapping(
+            path = "/similar/batch",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<List<Document>> getSimilarIncidentsBatch(
+            @RequestBody BatchSearchRequest request
+    ) {
+        if (request.hotelKey() == null ||
+                request.hotelKey().isBlank() ||
+                request.queries() == null ||
+                request.queries().isEmpty()) {
 
+            return ResponseEntity.badRequest().build();
+        }
+
+        return ResponseEntity.ok(
+                incidentService.searchSimilarIncidentsBatch(
+                        request.hotelKey(),
+                        request.queries(),
+                        request.limit()
+                )
+        );
+    }
 // Обновленный метод в файле QdrantController.java
 
     @PostMapping(value = "/upload-pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -191,4 +191,71 @@ public class RagGrpcService extends RagServiceGrpc.RagServiceImplBase {
             responseObserver.onCompleted();
         }
     }
+    @Override
+    public void searchSimilarBatch(
+            com.example.grpc.BatchSearchRequest request,
+            StreamObserver<SearchResponse> responseObserver
+    ) {
+        long startedAt = System.currentTimeMillis();
+
+        try {
+            int limit = request.getLimit() > 0
+                    ? request.getLimit()
+                    : 5;
+
+            List<Document> documents =
+                    incidentEmbeddingService.searchSimilarIncidentsBatch(
+                            request.getHotelKey(),
+                            request.getQueriesList(),
+                            limit
+                    );
+
+            SearchResponse.Builder response = SearchResponse.newBuilder();
+
+            for (Document document : documents) {
+                DocumentProto.Builder proto = DocumentProto.newBuilder()
+                        .setId(document.getId() != null
+                                ? document.getId()
+                                : "")
+                        .setText(document.getText() != null
+                                ? document.getText()
+                                : "")
+                        .setScore(document.getScore() != null
+                                ? document.getScore()
+                                : 0.0);
+
+                if (document.getMetadata() != null) {
+                    document.getMetadata().forEach((key, value) ->
+                            proto.putMetadata(
+                                    key,
+                                    value != null ? value.toString() : ""
+                            )
+                    );
+                }
+
+                response.addDocuments(proto.build());
+            }
+
+            log.info(
+                    "gRPC batch search: hotel={}, queries={}, documents={}, duration={} ms",
+                    request.getHotelKey(),
+                    request.getQueriesCount(),
+                    documents.size(),
+                    System.currentTimeMillis() - startedAt
+            );
+
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            log.error("gRPC batch search failed", e);
+
+            responseObserver.onError(
+                    io.grpc.Status.INTERNAL
+                            .withDescription("Batch search failed")
+                            .withCause(e)
+                            .asRuntimeException()
+            );
+        }
+    }
 }

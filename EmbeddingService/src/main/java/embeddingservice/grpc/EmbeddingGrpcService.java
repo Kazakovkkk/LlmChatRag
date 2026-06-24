@@ -30,7 +30,7 @@ public class EmbeddingGrpcService extends EmbeddingServiceGrpc.EmbeddingServiceI
 
         EmbedResponse.Builder builder = EmbedResponse.newBuilder();
         for (float v : vector) builder.addVector(v);
-        log.info("gRPC embed | {} мс", System.currentTimeMillis() - start);
+        //log.info("gRPC embed | {} мс", System.currentTimeMillis() - start);
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
 
@@ -53,7 +53,7 @@ public class EmbeddingGrpcService extends EmbeddingServiceGrpc.EmbeddingServiceI
         responseObserver.onNext(batchBuilder.build());
         responseObserver.onCompleted();
 
-        log.info("gRPC embedBatch | {} текстов | {} мс",
-                request.getTextsCount(), System.currentTimeMillis() - start);
+        //log.info("gRPC embedBatch | {} текстов | {} мс",
+                //request.getTextsCount(), System.currentTimeMillis() - start);
     }
 }

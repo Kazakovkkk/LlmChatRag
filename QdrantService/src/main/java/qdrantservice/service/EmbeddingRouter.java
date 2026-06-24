@@ -39,12 +39,49 @@ public class EmbeddingRouter {
 
     public List<float[]> embedBatch(List<String> texts) {
         long start = System.currentTimeMillis();
+
         List<float[]> result = switch (protocol) {
             case "grpc" -> grpcClient.embedBatch(texts);
-            default -> texts.stream().map(restClient::embed).toList();
+            default -> restClient.embedPassages(texts);
         };
-        log.info("=== EmbedBatch | Protocol: {} | {} текстов | {} мс ===",
-                protocol, texts.size(), System.currentTimeMillis() - start);
+
+        log.info(
+                "EmbedBatch: protocol={}, texts={}, duration={} ms",
+                protocol,
+                texts.size(),
+                System.currentTimeMillis() - start
+        );
+
         return result;
+    }
+    public float[] embedForSimilarity(String text) {
+        return switch (protocol) {
+            case "grpc" -> grpcClient.embed(withQueryPrefix(text));
+            default -> restClient.embedQuery(text);
+        };
+    }
+
+    public List<float[]> embedBatchForSimilarity(List<String> texts) {
+        return switch (protocol) {
+            case "grpc" -> grpcClient.embedBatch(
+                    texts.stream()
+                            .map(this::withQueryPrefix)
+                            .toList()
+            );
+            default -> texts.stream()
+                    .map(restClient::embedQuery)
+                    .toList();
+        };
+    }
+
+    private String withQueryPrefix(String text) {
+        String normalized = text.trim();
+
+        if (normalized.startsWith("query: ") ||
+                normalized.startsWith("passage: ")) {
+            return normalized;
+        }
+
+        return "query: " + normalized;
     }
 }

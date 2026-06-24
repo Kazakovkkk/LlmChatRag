@@ -1,12 +1,18 @@
 package qdrantservice.service;
 
-import io.qdrant.client.grpc.Points;
+import io.qdrant.client.grpc.Points.PointStruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import io.qdrant.client.grpc.JsonWithInt.Value;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
@@ -16,170 +22,597 @@ public class BM25Tokenizer {
     private static final float K1 = 1.5f;
     private static final float B = 0.75f;
 
-    private final BM25StatsRepository statsRepository;
-
     private static final Set<String> STOP_WORDS = Set.of(
-            "и", "в", "на", "с", "по", "для", "не", "это", "как", "что",
-            "а", "но", "или", "из", "о", "от", "до", "за", "при", "к",
-            "the", "a", "an", "in", "on", "at", "for", "to", "of", "is"
+            "и", "в", "на", "с", "по", "для", "не", "это",
+            "как", "что", "а", "но", "или", "из", "о", "от",
+            "до", "за", "при", "к",
+            "the", "a", "an", "in", "on", "at", "for",
+            "to", "of", "is"
     );
 
-    // Полностью обновленный метод в BM25Tokenizer.java
+    private final BM25StatsRepository statsRepository;
 
-    public void indexDocument(String statsCollection, String documentId, String text) {
-        List<String> terms = tokenizeToTerms(text);
-        int docLength = terms.size();
-        Set<String> uniqueTerms = new HashSet<>(terms);
+    private final Map<String, Object> collectionLocks =
+            new ConcurrentHashMap<>();
 
-        if (uniqueTerms.isEmpty()) return;
+    public void upsertDocument(
+            String statsCollection,
+            String documentId,
+            String text
+    ) {
+        synchronized (lockFor(statsCollection)) {
+            List<String> tokens = tokenizeToTerms(text);
+            Set<String> newTerms = new HashSet<>(tokens);
+            int newLength = tokens.size();
 
-        // 1. Читаем глобальную статистику (1-й сетевой запрос)
-        var globalMetaOpt = statsRepository.loadGlobalStats(statsCollection);
-        int oldTotalDocs = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::totalDocuments).orElse(0);
-        double oldAvgLen = globalMetaOpt.map(BM25StatsRepository.GlobalStatsMeta::avgDocumentLength).orElse(0.0);
+            Optional<BM25StatsRepository.DocumentStats> oldStatsOptional =
+                    statsRepository.loadDocumentStats(
+                            statsCollection,
+                            documentId
+                    );
 
-        int newTotalDocs = oldTotalDocs + 1;
-        double newAvgLen = ((oldAvgLen * oldTotalDocs) + docLength) / newTotalDocs;
+            Set<String> oldTerms = oldStatsOptional
+                    .map(BM25StatsRepository.DocumentStats::terms)
+                    .orElseGet(Set::of);
 
-        // 2. Читаем частоты ВСЕХ уникальных слов чанка одной пачкой (2-й сетевой запрос)
-        Map<String, Integer> currentFreqs = statsRepository.loadTermFrequenciesBatch(statsCollection, uniqueTerms);
+            int oldLength = oldStatsOptional
+                    .map(BM25StatsRepository.DocumentStats::length)
+                    .orElse(0);
 
-        // Список для агрегации всех точек, которые нужно обновить/создать
-        List<Points.PointStruct> pointsToUpsert = new ArrayList<>();
+            BM25StatsRepository.GlobalStatsMeta global =
+                    statsRepository.loadGlobalStats(statsCollection)
+                            .orElse(
+                                    new BM25StatsRepository.GlobalStatsMeta(
+                                            0,
+                                            0.0
+                                    )
+                            );
 
-        // Собираем точку глобальной статистики
-        Map<String, Value> globalPayload = new HashMap<>();
-        globalPayload.put("total_documents", Value.newBuilder().setIntegerValue(newTotalDocs).build());
-        globalPayload.put("avg_document_length", Value.newBuilder().setDoubleValue(newAvgLen).build());
-        globalPayload.put("is_system_meta", Value.newBuilder().setBoolValue(true).build());
-        pointsToUpsert.add(statsRepository.buildServicePoint("00000000-0000-0000-0000-000000000001", globalPayload));
+            int oldDocumentCount = global.totalDocuments();
 
-        // Собираем точку длины текущего документа
-        String docLenUuid = UUID.nameUUIDFromBytes(("doclen_" + documentId).getBytes()).toString();
-        Map<String, Value> docLenPayload = new HashMap<>();
-        docLenPayload.put("doc_id", Value.newBuilder().setStringValue(documentId).build());
-        docLenPayload.put("length", Value.newBuilder().setIntegerValue(docLength).build());
-        docLenPayload.put("is_doc_length", Value.newBuilder().setBoolValue(true).build());
-        pointsToUpsert.add(statsRepository.buildServicePoint(docLenUuid, docLenPayload));
+            double oldTotalLength =
+                    oldDocumentCount
+                            * global.avgDocumentLength();
 
-        // Накапливаем изменения для частоты каждого слова в памяти
-        for (String term : uniqueTerms) {
-            int currentFreq = currentFreqs.getOrDefault(term, 0);
-            int newFreq = currentFreq + 1;
+            boolean documentAlreadyExists =
+                    oldStatsOptional.isPresent();
 
-            String termUuid = UUID.nameUUIDFromBytes(term.getBytes()).toString();
-            Map<String, Value> termPayload = new HashMap<>();
-            termPayload.put("term", Value.newBuilder().setStringValue(term).build());
-            termPayload.put("frequency", Value.newBuilder().setIntegerValue(newFreq).build());
-            termPayload.put("is_term", Value.newBuilder().setBoolValue(true).build());
+            int newDocumentCount = documentAlreadyExists
+                    ? oldDocumentCount
+                    : oldDocumentCount + 1;
 
-            pointsToUpsert.add(statsRepository.buildServicePoint(termUuid, termPayload));
+            double newTotalLength;
+
+            if (documentAlreadyExists) {
+                newTotalLength =
+                        oldTotalLength
+                                - oldLength
+                                + newLength;
+            } else {
+                newTotalLength =
+                        oldTotalLength
+                                + newLength;
+            }
+
+            newTotalLength = Math.max(
+                    0.0,
+                    newTotalLength
+            );
+
+            double newAverageLength =
+                    newDocumentCount == 0
+                            ? 0.0
+                            : newTotalLength
+                            / newDocumentCount;
+
+            Set<String> allChangedTerms =
+                    new HashSet<>(oldTerms);
+
+            allChangedTerms.addAll(newTerms);
+
+            Map<String, Integer> currentFrequencies =
+                    statsRepository.loadTermFrequenciesBatch(
+                            statsCollection,
+                            allChangedTerms
+                    );
+
+            List<PointStruct> pointsToUpsert =
+                    new ArrayList<>();
+
+            List<String> pointsToDelete =
+                    new ArrayList<>();
+
+            for (String term : allChangedTerms) {
+                int delta =
+                        (newTerms.contains(term) ? 1 : 0)
+                                - (oldTerms.contains(term) ? 1 : 0);
+
+                if (delta == 0) {
+                    continue;
+                }
+
+                int currentFrequency =
+                        currentFrequencies.getOrDefault(
+                                term,
+                                0
+                        );
+
+                int newFrequency = Math.max(
+                        0,
+                        currentFrequency + delta
+                );
+
+                if (newFrequency == 0) {
+                    pointsToDelete.add(
+                            statsRepository.getTermPointId(term)
+                    );
+                } else {
+                    pointsToUpsert.add(
+                            statsRepository
+                                    .buildTermFrequencyPoint(
+                                            term,
+                                            newFrequency
+                                    )
+                    );
+                }
+            }
+
+            pointsToUpsert.add(
+                    statsRepository.buildGlobalStatsPoint(
+                            newDocumentCount,
+                            newAverageLength
+                    )
+            );
+
+            pointsToUpsert.add(
+                    statsRepository.buildDocumentStatsPoint(
+                            documentId,
+                            newLength,
+                            newTerms
+                    )
+            );
+
+            try {
+                statsRepository.upsertPointsBatch(
+                        statsCollection,
+                        pointsToUpsert
+                );
+
+                statsRepository.invalidateGlobalStats(
+                        statsCollection
+                );
+
+                statsRepository.deletePointsBatch(
+                        statsCollection,
+                        pointsToDelete
+                );
+
+                statsRepository.cacheGlobalStats(
+                        statsCollection,
+                        new BM25StatsRepository.GlobalStatsMeta(
+                                newDocumentCount,
+                                newAverageLength
+                        )
+                );
+            } catch (RuntimeException e) {
+                statsRepository.invalidateGlobalStats(
+                        statsCollection
+                );
+
+                throw e;
+            }
         }
-
-        // 3. Отправляем всю пачку данных в Qdrant ОДНИМ запросом (3-й сетевой запрос)
-        statsRepository.upsertPointsBatch(statsCollection, pointsToUpsert);
     }
 
-    public void clearCollectionStats(String statsCollection) {
-        log.warn("🗑️ Запрос на каскадное удаление метаданных BM25 из репозитория для коллекции: {}", statsCollection);
-        try {
-            statsRepository.deleteCollectionStats(statsCollection);
-            log.info("✅ Статистические матрицы BM25 для коллекции [{}] успешно очищены в БД", statsCollection);
-        } catch (Exception e) {
-            log.error("❌ Не удалось очистить BM25StatsRepository для {}: {}", statsCollection, e.getMessage());
-            // Не выбрасываем исключение жестко, чтобы не блокировать очистку самого Qdrant, если БД пуста
+    public void removeDocument(
+            String statsCollection,
+            String documentId
+    ) {
+        synchronized (lockFor(statsCollection)) {
+            Optional<BM25StatsRepository.DocumentStats> oldStatsOptional =
+                    statsRepository.loadDocumentStats(
+                            statsCollection,
+                            documentId
+                    );
+
+            if (oldStatsOptional.isEmpty()) {
+                log.warn(
+                        "BM25-статистика документа {} не найдена",
+                        documentId
+                );
+                return;
+            }
+
+            BM25StatsRepository.DocumentStats oldStats =
+                    oldStatsOptional.get();
+
+            BM25StatsRepository.GlobalStatsMeta global =
+                    statsRepository.loadGlobalStats(statsCollection)
+                            .orElse(
+                                    new BM25StatsRepository.GlobalStatsMeta(
+                                            0,
+                                            0.0
+                                    )
+                            );
+
+            int newDocumentCount = Math.max(
+                    0,
+                    global.totalDocuments() - 1
+            );
+
+            double oldTotalLength =
+                    global.totalDocuments()
+                            * global.avgDocumentLength();
+
+            double newTotalLength = Math.max(
+                    0.0,
+                    oldTotalLength - oldStats.length()
+            );
+
+            double newAverageLength =
+                    newDocumentCount == 0
+                            ? 0.0
+                            : newTotalLength
+                            / newDocumentCount;
+
+            Map<String, Integer> frequencies =
+                    statsRepository.loadTermFrequenciesBatch(
+                            statsCollection,
+                            oldStats.terms()
+                    );
+
+            List<PointStruct> pointsToUpsert =
+                    new ArrayList<>();
+
+            List<String> pointsToDelete =
+                    new ArrayList<>();
+
+            for (String term : oldStats.terms()) {
+                int newFrequency = Math.max(
+                        0,
+                        frequencies.getOrDefault(term, 0) - 1
+                );
+
+                if (newFrequency == 0) {
+                    pointsToDelete.add(
+                            statsRepository.getTermPointId(term)
+                    );
+                } else {
+                    pointsToUpsert.add(
+                            statsRepository
+                                    .buildTermFrequencyPoint(
+                                            term,
+                                            newFrequency
+                                    )
+                    );
+                }
+            }
+
+            pointsToUpsert.add(
+                    statsRepository.buildGlobalStatsPoint(
+                            newDocumentCount,
+                            newAverageLength
+                    )
+            );
+
+            pointsToDelete.add(
+                    statsRepository.getDocumentStatsPointId(
+                            documentId
+                    )
+            );
+
+            try {
+                statsRepository.upsertPointsBatch(
+                        statsCollection,
+                        pointsToUpsert
+                );
+
+                statsRepository.invalidateGlobalStats(
+                        statsCollection
+                );
+
+                statsRepository.deletePointsBatch(
+                        statsCollection,
+                        pointsToDelete
+                );
+
+                statsRepository.cacheGlobalStats(
+                        statsCollection,
+                        new BM25StatsRepository.GlobalStatsMeta(
+                                newDocumentCount,
+                                newAverageLength
+                        )
+                );
+            } catch (RuntimeException e) {
+                statsRepository.invalidateGlobalStats(
+                        statsCollection
+                );
+
+                throw e;
+            }
         }
     }
 
-    public Map<Integer, Float> tokenizeWithBM25(String statsCollection, String text, String documentId, boolean isDocument) {
-        List<String> terms = tokenizeToTerms(text);
-        if (terms.isEmpty()) return Map.of();
+    public void clearCollectionStats(
+            String statsCollection
+    ) {
+        statsRepository.deleteCollectionStats(
+                statsCollection
+        );
+    }
 
-        Map<String, Integer> termFreq = new HashMap<>();
+    public Map<Integer, Float> tokenizeWithBM25(
+            String statsCollection,
+            String text,
+            String documentId,
+            boolean isDocument
+    ) {
+        List<String> terms = tokenizeToTerms(text);
+
+        if (terms.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Integer> termFrequency =
+                new HashMap<>();
+
         for (String term : terms) {
-            termFreq.merge(term, 1, Integer::sum);
+            termFrequency.merge(
+                    term,
+                    1,
+                    Integer::sum
+            );
         }
 
-        // docLength нужен только для документа (BM25-нормализация tf), для запроса не используется
-        int docLength = isDocument ? terms.size() : 0;
+        Map<String, Integer> documentFrequencies =
+                statsRepository.loadTermFrequenciesBatch(
+                        statsCollection,
+                        termFrequency.keySet()
+                );
 
-        // ОДИН пакетный запрос вместо N точечных
-        Map<String, Integer> dfMap = statsRepository.loadTermFrequenciesBatch(statsCollection, termFreq.keySet());
+        BM25StatsRepository.GlobalStatsMeta global =
+                statsRepository.loadGlobalStats(statsCollection)
+                        .orElse(
+                                new BM25StatsRepository.GlobalStatsMeta(
+                                        1,
+                                        1.0
+                                )
+                        );
 
-        Map<Integer, Float> sparseVector = new HashMap<>();
-        var globalMeta = statsRepository.loadGlobalStats(statsCollection)
-                .orElse(new BM25StatsRepository.GlobalStatsMeta(1, 1.0));
+        int totalDocuments = Math.max(
+                global.totalDocuments(),
+                1
+        );
 
-        int N = Math.max(globalMeta.totalDocuments(), 1);
-        double avgDL = Math.max(globalMeta.avgDocumentLength(), 1.0);
+        double averageDocumentLength = Math.max(
+                global.avgDocumentLength(),
+                1.0
+        );
 
-        for (Map.Entry<String, Integer> entry : termFreq.entrySet()) {
+        int documentLength = isDocument
+                ? terms.size()
+                : 0;
+
+        Map<Integer, Float> sparseVector =
+                new HashMap<>();
+
+        for (Map.Entry<String, Integer> entry
+                : termFrequency.entrySet()) {
+
             String term = entry.getKey();
-            int tf = entry.getValue();
+            int frequency = entry.getValue();
 
-            int df = dfMap.getOrDefault(term, 0);
-            double idf = Math.log((N - df + 0.5) / (df + 0.5) + 1.0);
+            int documentFrequency =
+                    documentFrequencies.getOrDefault(
+                            term,
+                            0
+                    );
+
+            double idf = Math.log(
+                    (totalDocuments
+                            - documentFrequency
+                            + 0.5)
+                            / (documentFrequency + 0.5)
+                            + 1.0
+            );
 
             float score;
+
             if (isDocument) {
-                double tfNorm = (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * docLength / avgDL));
-                score = (float) (idf * tfNorm);
+                double normalizedTermFrequency =
+                        (frequency * (K1 + 1.0))
+                                / (
+                                frequency
+                                        + K1 * (
+                                        1.0
+                                                - B
+                                                + B
+                                                * documentLength
+                                                / averageDocumentLength
+                                )
+                        );
+
+                score = (float) (
+                        idf * normalizedTermFrequency
+                );
             } else {
                 score = (float) idf;
             }
 
-            if (score > 0) {
-                int index = Math.abs(term.hashCode()) % 100000;
-                sparseVector.merge(index, score, Float::sum);
+            if (score <= 0) {
+                continue;
             }
+
+            int index = Math.floorMod(
+                    term.hashCode(),
+                    100_000
+            );
+
+            sparseVector.merge(
+                    index,
+                    score,
+                    Float::sum
+            );
         }
+
         return sparseVector;
     }
 
     public List<String> tokenizeToTerms(String text) {
-        String[] words = text.toLowerCase()
-                .replaceAll("[^a-zA-Zа-яА-Я0-9\\s]", " ")
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+
+        String[] words = text
+                .toLowerCase()
+                .replaceAll(
+                        "[^a-zA-Zа-яА-Я0-9\\s]",
+                        " "
+                )
                 .split("\\s+");
 
         List<String> terms = new ArrayList<>();
+
         for (String word : words) {
-            if (word.length() > 2 && !STOP_WORDS.contains(word)) {
+            if (word.length() > 2
+                    && !STOP_WORDS.contains(word)) {
                 terms.add(stem(word));
             }
         }
+
         return terms;
     }
 
-    private String stem(String word) {
-        if (word.endsWith("ами") || word.endsWith("ями") || word.endsWith("ыми"))
-            return word.substring(0, word.length() - 3);
-        if (word.endsWith("ого") || word.endsWith("его"))
-            return word.substring(0, word.length() - 3);
-        if (word.endsWith("ому") || word.endsWith("ему"))
-            return word.substring(0, word.length() - 3);
-        if (word.endsWith("ах") || word.endsWith("ях"))
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("ов") || word.endsWith("ев"))
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("ий") || word.endsWith("ый") || word.endsWith("ая") || word.endsWith("ое"))
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("ть") || word.endsWith("ти"))
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("ет") || word.endsWith("ит") || word.endsWith("ат") || word.endsWith("ят"))
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("а") || word.endsWith("я") || word.endsWith("е") || word.endsWith("и") || word.endsWith("ы"))
-            return word.length() > 4 ? word.substring(0, word.length() - 1) : word;
-        if (word.endsWith("ing") && word.length() > 5)
-            return word.substring(0, word.length() - 3);
-        if (word.endsWith("tion") && word.length() > 6)
-            return word.substring(0, word.length() - 4);
-        if (word.endsWith("ed") && word.length() > 4)
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("es") && word.length() > 4)
-            return word.substring(0, word.length() - 2);
-        if (word.endsWith("s") && word.length() > 3)
-            return word.substring(0, word.length() - 1);
-        return word;
+    private Object lockFor(String statsCollection) {
+        return collectionLocks.computeIfAbsent(
+                statsCollection,
+                ignored -> new Object()
+        );
     }
 
+    private String stem(String word) {
+        if (word.endsWith("ами")
+                || word.endsWith("ями")
+                || word.endsWith("ыми")) {
+            return word.substring(
+                    0,
+                    word.length() - 3
+            );
+        }
+
+        if (word.endsWith("ого")
+                || word.endsWith("его")) {
+            return word.substring(
+                    0,
+                    word.length() - 3
+            );
+        }
+
+        if (word.endsWith("ому")
+                || word.endsWith("ему")) {
+            return word.substring(
+                    0,
+                    word.length() - 3
+            );
+        }
+
+        if (word.endsWith("ах")
+                || word.endsWith("ях")) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("ов")
+                || word.endsWith("ев")) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("ий")
+                || word.endsWith("ый")
+                || word.endsWith("ая")
+                || word.endsWith("ое")) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("ть")
+                || word.endsWith("ти")) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("ет")
+                || word.endsWith("ит")
+                || word.endsWith("ат")
+                || word.endsWith("ят")) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("а")
+                || word.endsWith("я")
+                || word.endsWith("е")
+                || word.endsWith("и")
+                || word.endsWith("ы")) {
+            return word.length() > 4
+                    ? word.substring(
+                    0,
+                    word.length() - 1
+            )
+                    : word;
+        }
+
+        if (word.endsWith("ing")
+                && word.length() > 5) {
+            return word.substring(
+                    0,
+                    word.length() - 3
+            );
+        }
+
+        if (word.endsWith("tion")
+                && word.length() > 6) {
+            return word.substring(
+                    0,
+                    word.length() - 4
+            );
+        }
+
+        if (word.endsWith("ed")
+                && word.length() > 4) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("es")
+                && word.length() > 4) {
+            return word.substring(
+                    0,
+                    word.length() - 2
+            );
+        }
+
+        if (word.endsWith("s")
+                && word.length() > 3) {
+            return word.substring(
+                    0,
+                    word.length() - 1
+            );
+        }
+
+        return word;
+    }
 }

@@ -7,3 +7,4 @@ llmservice/src/main/resorces/application.yml
 QdrantService/src/main/resorces/application.yml
 QdrantService/src/main/resorces/application.yml
 application.yml
+target/

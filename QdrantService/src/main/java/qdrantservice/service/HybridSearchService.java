@@ -30,7 +30,7 @@ public class HybridSearchService {
      * 1. Векторный поиск (Dense) с детальным логированием
      */
     public List<ScoredDocument> searchByVector(String collectionName, String query, int limit, float threshold) {
-        float[] vector = embeddingService.embed(query);
+        float[] vector = embeddingService.embedQuery(query);
 
         List<Float> vectorList = new ArrayList<>();
         for (float v : vector) vectorList.add(v);
@@ -50,13 +50,13 @@ public class HybridSearchService {
                     .map(p -> new ScoredDocument(p.getId().getUuid(), extractText(p), p.getScore(), "vector"))
                     .collect(Collectors.toList());
 
-            // --- ДОБАВЛЕНЫ ЛОГИ ДЛЯ СТАТИСТИКИ ВЕКТОРНОГО ПОИСКА ---
+            /*--- ДОБАВЛЕНЫ ЛОГИ ДЛЯ СТАТИСТИКИ ВЕКТОРНОГО ПОИСКА ---
             log.info("🔍 [ВЕКТОРНЫЙ ПОИСК] Коллекция: '{}' | Найдено чанков: {}", collectionName, results.size());
             results.forEach(doc -> log.info("  ├── 📄 ID: {} | Vector Score: {} | Текст: '{}'",
                     doc.getId(),
                     String.format("%.4f", doc.getScore()),
                     doc.getText().replace("\n", " "))); // убираем переносы для красоты лога
-
+            */
             return results;
         } catch (Exception e) {
             log.error("Ошибка векторного поиска в {}: {}", collectionName, e.getMessage());
@@ -93,14 +93,14 @@ public class HybridSearchService {
             List<ScoredDocument> results = points.stream()
                     .map(p -> new ScoredDocument(p.getId().getUuid(), extractText(p), p.getScore(), "keyword"))
                     .collect(Collectors.toList());
-
+            /*
             // --- ДОБАВЛЕНЫ ЛОГИ ДЛЯ СТАТИСТИКИ КЛЮЧЕВОГО ПОИСКА ---
             log.info("🔍 [КЛЮЧЕВОЙ ПОИСК (BM25)] Коллекция: '{}' | Найдено чанков: {}", mainCollection, results.size());
             results.forEach(doc -> log.info("  ├── 📄 ID: {} | BM25 Score: {} | Текст: '{}'",
                     doc.getId(),
                     String.format("%.4f", doc.getScore()),
                     doc.getText().replace("\n", " ")));
-
+            */
             return results;
         } catch (Exception e) {
             log.error("Ошибка ключевого поиска в {}: {}", mainCollection, e.getMessage());
@@ -112,7 +112,7 @@ public class HybridSearchService {
      * 3. Гибридный поиск (Reciprocal Rank Fusion) с детальным итоговым логированием
      */
     public List<ScoredDocument> searchHybrid(String mainColl, String statsColl, String query, int limit, float threshold) {
-        log.info("🚀 Запуск гибридного конвейера RAG для запроса: '{}'", query);
+        //log.info("🚀 Запуск гибридного конвейера RAG для запроса: '{}'", query);
 
         // Получаем промежуточные выборки
         List<ScoredDocument> vectorResults = searchByVector(mainColl, query, limit * 2, threshold);
@@ -143,7 +143,7 @@ public class HybridSearchService {
                 .map(e -> new ScoredDocument(e.getKey(), idToTextMap.get(e.getKey()), e.getValue().floatValue(), "hybrid"))
                 .collect(Collectors.toList());
 
-        // --- ДОБАВЛЕНЫ ЛОГИ ДЛЯ ИТОГОВОГО ГИБРИДНОГО РАНЖИРОВАНИЯ ---
+        /*--- ДОБАВЛЕНЫ ЛОГИ ДЛЯ ИТОГОВОГО ГИБРИДНОГО РАНЖИРОВАНИЯ ---
         log.info("🏆 [ГИБРИДНОЕ СЛИЯНИЕ RRF] Финальный результат (Лимит: {}):", limit);
         if (hybridResults.isEmpty()) {
             log.warn("  ⚠️ Внимание: после слияния RRF список результатов пуст!");
@@ -158,7 +158,7 @@ public class HybridSearchService {
             }
         }
         log.info("=========================================================================");
-
+        */
         return hybridResults;
     }
 

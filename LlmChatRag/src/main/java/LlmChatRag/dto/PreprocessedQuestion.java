@@ -1,8 +1,10 @@
 package LlmChatRag.dto;
 
+import lombok.Data;
+
 import java.util.List;
 import java.util.Map;
-
+@Data
 public class PreprocessedQuestion {
     private String intentType;
     private String actionName;

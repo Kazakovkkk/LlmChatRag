@@ -8,7 +8,7 @@ option java_multiple_files = true;
 service RagService {
   rpc SearchSimilar (SearchRequest) returns (SearchResponse);
   rpc UploadDocument (UploadRequest) returns (UploadResponse);
-
+  rpc SearchSimilarBatch(BatchSearchRequest) returns (SearchResponse);
   // Новые методы для CRUD-операций админа над базой знаний
   rpc GetChunks (GetChunksRequest) returns (GetChunksResponse);
   rpc UpdateChunk (UpdateChunkRequest) returns (UpdateChunkResponse);
@@ -47,7 +47,11 @@ message UploadResponse {
   string filename = 3;
   string tag = 4;
 }
-
+message BatchSearchRequest {
+  string hotel_key = 1;
+  repeated string queries = 2;
+  int32 limit = 3;
+}
 message GetChunksRequest {
   string hotel_key = 1;
   int32 limit = 2;

@@ -13,13 +13,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -34,7 +30,6 @@ public class RagChatService {
     private final ObjectMapper objectMapper;
     private final LlmPreprocessorRouter preprocessorRouter; // ← Вместо прямого RestClient llmRestClient для препроцессинга
     private final HotelActionRouter hotelActionRouter;     // ← Добавляем роутер действий
-    private final ExecutorService searchExecutor;
 
     public RagChatService(
             @Qualifier("llmRestClient") RestClient llmRestClient,
@@ -44,8 +39,7 @@ public class RagChatService {
             LlmStreamRouter llmStreamRouter,
             LlmPreprocessorRouter preprocessorRouter,
             HotelActionRouter hotelActionRouter,
-            ObjectMapper objectMapper,
-            ExecutorService searchExecutor // НОВОЕ
+            ObjectMapper objectMapper
     ) {
         this.llmRestClient = llmRestClient;
         this.adminRestClient = adminRestClient;
@@ -55,7 +49,6 @@ public class RagChatService {
         this.preprocessorRouter = preprocessorRouter;
         this.hotelActionRouter = hotelActionRouter;
         this.objectMapper = objectMapper;
-        this.searchExecutor = searchExecutor;
     }
 
     public String chat(String userQuestion, String hotelKey, List<MessageDto> history) {
@@ -148,7 +141,7 @@ public class RagChatService {
             timings[1] = System.currentTimeMillis() - t2;
 
             long t3 = System.currentTimeMillis();
-            List<DocumentDto> topDocs = rankingService.getTopK(documents, 5);
+            List<DocumentDto> topDocs = rankingService.getTopK(documents, 10);
             timings[2] = System.currentTimeMillis() - t3;
 
             String context = topDocs.stream()
@@ -227,46 +220,26 @@ public class RagChatService {
         }
     }
 
-    private List<DocumentDto> searchDocuments(String hotelKey, PreprocessedQuestion processed) {
-        List<String> allQueries = new ArrayList<>();
-        allQueries.add(processed.getNormalized());
-        if (processed.getAlternatives() != null) {
-            allQueries.addAll(processed.getAlternatives());
-        }
-
-        log.info("То что передаётся в запрос в qdrant: {}", allQueries);
-
-        // Запускаем все запросы параллельно
-        List<CompletableFuture<List<DocumentDto>>> futures = allQueries.stream()
-                .map(query -> CompletableFuture.supplyAsync(() -> {
-                    try {
-                        List<DocumentDto> docs = searchRouter.search(hotelKey, query, 5);
-                        if (docs != null && !docs.isEmpty()) {
-                            log.info("=== Запрос: '{}' | Найдено документов: {} ===", query, docs.size());
-                            docs.forEach(doc -> log.info(
-                                    "ID: {} | Score: {} | Text: {}",
-                                    doc.getId(), doc.getScore(), doc.getText()
-                            ));
-                            return docs;
-                        } else {
-                            log.warn("Запрос '{}' вернул пустой результат", query);
-                            return List.<DocumentDto>of();
-                        }
-                    } catch (Exception e) {
-                        log.warn("Ошибка поиска для запроса '{}': {}", query, e.getMessage());
-                        return List.<DocumentDto>of();
-                    }
-                }, searchExecutor))
+    private List<DocumentDto> searchDocuments(
+            String hotelKey,
+            PreprocessedQuestion processed
+    ) {
+        List<String> queries = Stream.concat(
+                        Stream.of(processed.getNormalized()),
+                        processed.getAlternatives() == null
+                                ? Stream.empty()
+                                : processed.getAlternatives().stream()
+                )
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(q -> !q.isBlank())
+                .distinct()
+                .limit(4)
                 .toList();
 
-        // Дожидаемся всех (CompletableFuture.allOf под капотом через join)
-        List<DocumentDto> allDocuments = futures.stream()
-                .map(CompletableFuture::join)
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+        log.info("Batch search queries: {}", queries);
 
-        //log.info("=== Итого документов до ранжирования: {} ===", allDocuments.size());
-        return allDocuments;
+        return searchRouter.searchBatch(hotelKey, queries, 5);
     }
     public String chat_test(String userQuestion, String hotelKey, List<MessageDto> history) {
         try {

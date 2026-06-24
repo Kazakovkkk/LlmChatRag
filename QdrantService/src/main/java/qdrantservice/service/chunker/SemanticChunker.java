@@ -50,14 +50,14 @@ public class SemanticChunker {
     private List<float[]> getEmbeddingsSingle(List<String> sentences) {
         log.info("→ Single mode: {} запросов к embedding-service", sentences.size());
         return sentences.stream()
-                .map(embeddingRouter::embed)
+                .map(embeddingRouter::embedForSimilarity)
                 .toList();
     }
 
 
     private List<float[]> getEmbeddingsBatch(List<String> sentences) {
         log.info("→ Batch mode: 1 запрос к embedding-service на {} предложений", sentences.size());
-        return embeddingRouter.embedBatch(sentences);
+        return embeddingRouter.embedBatchForSimilarity(sentences);
     }
 
 

@@ -10,7 +10,7 @@ option java_multiple_files = true;
 service RagService {
   // Используется гостем (LlmChatRag) и админом (AdminPanel)
   rpc SearchSimilar (SearchRequest) returns (SearchResponse);
-
+  rpc SearchSimilarBatch(BatchSearchRequest) returns (SearchResponse);
   // Используется только админом (AdminPanel)
   rpc UploadDocument (UploadRequest) returns (UploadResponse);
   rpc GetChunks (GetChunksRequest) returns (GetChunksResponse);
@@ -41,6 +41,11 @@ message UploadRequest {
   bytes pdf_data = 2;
   string filename = 3;
   repeated string tags = 4;
+}
+message BatchSearchRequest {
+  string hotel_key = 1;
+  repeated string queries = 2;
+  int32 limit = 3;
 }
 
 message UploadResponse {
