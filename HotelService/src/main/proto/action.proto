@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package action;
+
+option java_package = "com.example.grpc.action";
+option java_multiple_files = true;
+
+service HotelActionService {
+
+  rpc ExecuteAction (ActionRequest) returns (ActionResponse);
+}
+
+message ActionRequest {
+  string hotel_key = 1;
+  string chat_id = 2;
+  string action_name = 3;
+  map<string, string> parameters = 4;
+}
+
+message ActionResponse {
+  bool success = 1;
+  string status = 2;
+  string message = 3;
+  map<string, string> details = 4;
+}

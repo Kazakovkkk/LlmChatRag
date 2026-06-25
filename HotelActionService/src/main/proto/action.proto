@@ -2,28 +2,26 @@ syntax = "proto3";
 
 package action;
 
-// Настройка пакетов, чтобы сгенерированные Java-классы корректно легли в проект
 option java_package = "com.example.grpc.action";
 option java_multiple_files = true;
 
-// Сервис для выполнения транзакционных действий во внутренних системах отеля (PMS, POS, Service Desk)
 service HotelActionService {
-  // Выполнить действие (заказ еды, заселение, вызов горничной)
+
   rpc ExecuteAction (ActionRequest) returns (ActionResponse);
 }
 
-// Структура запроса к отельной системе
+
 message ActionRequest {
-  string hotel_key = 1;               // Маркер отеля (мультиарендность, например "cosmos")
-  string chat_id = 2;                 // UUID сессии гостя из localStorage
-  string action_name = 3;             // Имя намерения (например, "ORDER_FOOD", "ROOM_CLEANING")
-  map<string, string> parameters = 4; // Динамические параметры заказа, извлеченные LLM
+  string hotel_key = 1;
+  string chat_id = 2;
+  string action_name = 3;
+  map<string, string> parameters = 4;
 }
 
-// Структура ответа от отельной системы
+
 message ActionResponse {
-  bool success = 1;                   // Успешность операции на стороне API отеля
-  string status = 2;                  // Статус выполнения (DRAFT, CONFIRMED, PENDING, REJECTED)
-  string message = 3;                 // Понятный ответ для гостя ("Ваш заказ №51 принят в обработку")
-  map<string, string> details = 4;     // Доп. параметры (например: {"total_price": "1500", "delivery_time": "20 min"})
+  bool success = 1;
+  string status = 2;
+  string message = 3;
+  map<string, string> details = 4;
 }

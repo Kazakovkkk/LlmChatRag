@@ -18,14 +18,14 @@ public class User {
     private Long id;
 
     @Column(nullable = false)
-    private String username; // Логин админа (email)
+    private String username;
 
     @Column(nullable = false)
-    private String passwordHash; // Захэшированный пароль
+    private String passwordHash;
 
     @Column(nullable = false)
-    private String hotelKey; // К какому отелю привязан этот админ
+    private String hotelKey;
 
     @Column(nullable = false)
-    private String role; // ROLE_ADMIN, ROLE_SUPERADMIN
+    private String role;
 }

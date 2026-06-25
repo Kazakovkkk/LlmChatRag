@@ -14,7 +14,6 @@ public class ServicesClientConfig {
 
     @Bean
     public WebClient gigachatWebClient() throws Exception {
-        // КРИТИЧЕСКИ ВАЖНО ДЛЯ GIGACHAT: Игнорируем самоподписанные SSL-сертификаты Сбера
         SslContext sslContext = SslContextBuilder.forClient()
                 .trustManager(InsecureTrustManagerFactory.INSTANCE)
                 .build();

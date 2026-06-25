@@ -13,15 +13,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // Отключаем CSRF, чтобы гостевой микросервис мог слать POST-запросы без токенов
                 .csrf(csrf -> csrf.disable())
 
                 .authorizeHttpRequests(auth -> auth
-                        // Открываем эндпоинты синхронизации чатов для гостевого сервиса
                         .requestMatchers("/admin/chats/**").permitAll()
-
-                        // Все остальные запросы (твоя будущая или текущая админка) пока тоже откроем,
-                        // чтобы у тебя ничего не сломалось в процессе разработки
                         .anyRequest().permitAll()
                 );
 

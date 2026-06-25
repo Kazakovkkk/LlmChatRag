@@ -22,7 +22,7 @@ public class LlmRouter {
     @Value("${llm.provider:ollama}")
     private String provider;
 
-    @Value("${llm.preprocess-provider:ollama-}")
+    @Value("${llm.preprocess-provider:stub}")
     private String preprocessProvider;
 
     public LlmRouter(OllamaChatService ollamaService,
@@ -40,22 +40,22 @@ public class LlmRouter {
     public Mono<String> chat(String prompt) {
         long start = System.currentTimeMillis();
         return switch (preprocessProvider) {
-            case "groq" -> groqService.chat(prompt).doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
-            case "lmstudio" -> lmStudioService.chat(prompt).doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
-            case "gigachat" -> gigachatService.chat(prompt).doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
-            case "stub" -> stubService.chat(prompt).doOnSuccess(r -> log.info("⏱ LLM chat (STUB): {} мс", System.currentTimeMillis() - start)); // НОВОЕ
-            default -> ollamaService.chat(prompt).doOnSuccess(r -> log.info("⏱ LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "groq" -> groqService.chat(prompt).doOnSuccess(r -> log.info("LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "lmstudio" -> lmStudioService.chat(prompt).doOnSuccess(r -> log.info("LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "gigachat" -> gigachatService.chat(prompt).doOnSuccess(r -> log.info("LLM chat: {} мс", System.currentTimeMillis() - start));
+            case "stub" -> stubService.chat(prompt).doOnSuccess(r -> log.info("LLM chat (STUB): {} мс", System.currentTimeMillis() - start)); // НОВОЕ
+            default -> ollamaService.chat(prompt).doOnSuccess(r -> log.info("LLM chat: {} мс", System.currentTimeMillis() - start));
         };
     }
 
     public Flux<String> chatStream(String prompt) {
         long start = System.currentTimeMillis();
         return switch (provider) {
-            case "groq" -> groqService.chatStream(prompt).doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
-            case "lmstudio" -> lmStudioService.chatStream(prompt).doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
-            case "gigachat" -> gigachatService.chatStream(prompt).doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
-            case "stub" -> stubService.chatStream(prompt).doOnComplete(() -> log.info("⏱ LLM stream (STUB): {} мс", System.currentTimeMillis() - start)); // НОВОЕ
-            default -> ollamaService.chatStream(prompt).doOnComplete(() -> log.info("⏱ LLM stream: {} мс", System.currentTimeMillis() - start));
+            case "groq" -> groqService.chatStream(prompt).doOnComplete(() -> log.info("LLM stream: {} мс", System.currentTimeMillis() - start));
+            case "lmstudio" -> lmStudioService.chatStream(prompt).doOnComplete(() -> log.info("LLM stream: {} мс", System.currentTimeMillis() - start));
+            case "gigachat" -> gigachatService.chatStream(prompt).doOnComplete(() -> log.info("LLM stream: {} мс", System.currentTimeMillis() - start));
+            case "stub" -> stubService.chatStream(prompt).doOnComplete(() -> log.info("LLM stream (STUB): {} мс", System.currentTimeMillis() - start)); // НОВОЕ
+            default -> ollamaService.chatStream(prompt).doOnComplete(() -> log.info("LLM stream: {} мс", System.currentTimeMillis() - start));
         };
     }
 }

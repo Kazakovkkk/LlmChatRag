@@ -4,11 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 public class PreprocessedQuestion {
-    private String intentType;                  // "SEARCH" или "ACTION"
-    private String actionName;                  // например, "ORDER_FOOD", "ROOM_CLEANING" (заполняется для ACTION)
-    private Map<String, String> parameters;     // Извлеченные сущности {"dish": "пицца", "drink": "кола"}
+    private String intentType;
+    private String actionName;
+    private Map<String, String> parameters;
 
-    // Поля для обратной совместимости с поисковым RAG-пайплайном
+
     private String normalized;
     private List<String> alternatives;
 
@@ -22,7 +22,6 @@ public class PreprocessedQuestion {
         this.alternatives = alternatives;
     }
 
-    // Геттеры и сеттеры
     public String getIntentType() { return intentType; }
     public void setIntentType(String intentType) { this.intentType = intentType; }
 

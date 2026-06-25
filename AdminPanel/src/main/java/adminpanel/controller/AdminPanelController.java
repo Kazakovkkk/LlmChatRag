@@ -19,7 +19,7 @@ import adminpanel.dto.TicketManagementDto;
 import java.util.List;
 import java.util.Map;
 
-@Controller // Меняем на @Controller, чтобы возвращать и HTML-страницы, и JSON-данные
+@Controller
 @RequestMapping("/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", allowedHeaders = "*")
@@ -27,7 +27,7 @@ public class AdminPanelController {
 
     private final AdminManagementService managementService;
 
-    // Страница панели управления (Доступна только авторизованным)
+
     @GetMapping("/dashboard")
     public String dashboardPage(HttpSession session) {
         if (session.getAttribute("hotelKey") == null) {
@@ -36,22 +36,19 @@ public class AdminPanelController {
         return "/admin/admin";
     }
 
-    // --- Защищенные REST Эндпоинты ---
 
-    // Находим и заменяем старый метод обработки в файле AdminPanelController.java
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseBody
     public ResponseEntity<Map<String, String>> uploadPdf(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("mode") String mode, // <-- ИСПРАВЛЕНИЕ: Добавлен приём режима (APPEND/OVERWRITE)
+            @RequestParam("mode") String mode,
             HttpSession session) {
 
         String hotelKey = (String) session.getAttribute("hotelKey");
         if (hotelKey == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 
         try {
-            // Транслируем параметр mode в управляющий сервис
             boolean success = managementService.processPdfUpload(hotelKey, file.getBytes(), file.getOriginalFilename(), mode);
 
             if (success) {
@@ -103,21 +100,17 @@ public class AdminPanelController {
         managementService.modifyBotResponse(messageId, payload.get("text"));
         return ResponseEntity.ok().build();
     }
-    // Добавь этот метод в AdminPanelController.java
 
-    // Внутренний эндпоинт для восстановления истории ОДНОЙ конкретной сессии гостя
     @GetMapping("/chats/history/single")
     @ResponseBody
     public ResponseEntity<List<adminpanel.model.Message>> getSingleChatHistory(
             @RequestParam("hotelKey") String hotelKey,
             @RequestParam("chatId") String chatId) {
 
-        // Этот метод вызывается без HttpSession, данные берутся строго из параметров запроса
         List<adminpanel.model.Message> messages = managementService.getSingleChatMessages(hotelKey, chatId);
         return ResponseEntity.ok(messages);
     }
 
-    // Внешняя синхронизация сообщений (Без сессии, вызывается по межсервисному REST)
     @PostMapping("/chats/sync")
     @ResponseBody
     public ResponseEntity<Void> syncMessage(@RequestBody Map<String, String> payload) {
@@ -152,10 +145,6 @@ public class AdminPanelController {
         return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении гостя"));
     }
 
-// ===================================================================
-// 2. УПРАВЛЕНИЕ ВКЛАДКОЙ "ПЕРСОНАЛ"
-// ===================================================================
-
     @GetMapping("/management/staff")
     @ResponseBody
     public ResponseEntity<List<StaffManagementDto>> getStaff(HttpSession session) {
@@ -179,10 +168,6 @@ public class AdminPanelController {
         return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении персонала"));
     }
 
-// ===================================================================
-// 3. УПРАВЛЕНИЕ ВКЛАДКОЙ "МЕНЮ И СКЛАД" (Цена защищена на уровне gRPC)
-// ===================================================================
-
     @GetMapping("/management/menu")
     @ResponseBody
     public ResponseEntity<List<MenuItemManagementDto>> getMenu(HttpSession session) {
@@ -197,7 +182,7 @@ public class AdminPanelController {
     @ResponseBody
     public ResponseEntity<Map<String, String>> updateStock(
             @PathVariable("id") String itemId,
-            @RequestBody Map<String, Integer> payload, // Принимаем только {"stockQuantity": 15}
+            @RequestBody Map<String, Integer> payload,
             HttpSession session) {
 
         String hotelKey = (String) session.getAttribute("hotelKey");
@@ -215,9 +200,6 @@ public class AdminPanelController {
         return ResponseEntity.internalServerError().body(Map.of("status", "error", "message", "Сбой gRPC при обновлении склада"));
     }
 
-// ===================================================================
-// 4. УПРАВЛЕНИЕ ВКЛАДКОЙ "ЖУРНАЛ ЗАЯВОК ИИ" (Цена чека защищена от изменений)
-// ===================================================================
 
     @GetMapping("/management/tickets")
     @ResponseBody
@@ -233,7 +215,7 @@ public class AdminPanelController {
     @ResponseBody
     public ResponseEntity<Map<String, String>> updateTicketStatus(
             @PathVariable("id") String ticketId,
-            @RequestBody Map<String, String> payload, // Принимаем только {"status": "COMPLETED"}
+            @RequestBody Map<String, String> payload,
             HttpSession session) {
 
         if (session.getAttribute("hotelKey") == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();

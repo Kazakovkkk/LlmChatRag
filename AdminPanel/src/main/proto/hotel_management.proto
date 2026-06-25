@@ -5,21 +5,14 @@ package management;
 option java_package = "com.example.grpc.management";
 option java_multiple_files = true;
 
-// Сервис бэк-офисного управления данными отеля для AdminPanel
+
 service HotelManagementService {
-  // 1. Управление гостями
   rpc GetGuests (GetGuestsRequest) returns (GetGuestsResponse);
   rpc UpdateGuest (UpdateGuestRequest) returns (ManagementActionResponse);
-
-  // 2. Управление персоналом
   rpc GetStaff (GetStaffRequest) returns (GetStaffResponse);
   rpc UpdateStaff (UpdateStaffRequest) returns (ManagementActionResponse);
-
-  // 3. Управление меню (Цену менять ЗАПРЕЩЕНО, только остатки склада)
   rpc GetMenu (GetMenuRequest) returns (GetMenuResponse);
   rpc UpdateMenuStock (UpdateMenuStockRequest) returns (ManagementActionResponse);
-
-  // 4. Журнал заявок ИИ (Менять можно ТОЛЬКО статус)
   rpc GetTickets (GetTicketsRequest) returns (GetTicketsResponse);
   rpc UpdateTicketStatus (UpdateTicketStatusRequest) returns (ManagementActionResponse);
   rpc DeleteStaff (DeleteStaffRequest) returns (ManagementActionResponse);
@@ -29,13 +22,10 @@ service HotelManagementService {
   rpc DeleteTicket (DeleteTicketRequest) returns (ManagementActionResponse);
 }
 
-// --- Общие структуры ответов ---
 message ManagementActionResponse {
   bool success = 1;
   string message = 2;
 }
-
-// --- Модели данных для таблиц админки ---
 
 message GuestManagementProto {
   string id = 1;
@@ -72,7 +62,6 @@ message TicketManagementProto {
   string created_at = 8;
 }
 
-// --- Структуры Запросов и Ответов ---
 
 message GetGuestsRequest { string hotel_key = 1; }
 message GetGuestsResponse { repeated GuestManagementProto guests = 1; }
@@ -87,14 +76,14 @@ message GetMenuResponse { repeated MenuItemManagementProto menu_items = 1; }
 message UpdateMenuStockRequest {
   string hotel_key = 1;
   string item_id = 2;
-  int32 stock_quantity = 3; // Только количество товара
+  int32 stock_quantity = 3;
 }
 
 message GetTicketsRequest { string hotel_key = 1; }
 message GetTicketsResponse { repeated TicketManagementProto tickets = 1; }
 message UpdateTicketStatusRequest {
   string ticket_id = 1;
-  string new_status = 2; // 'COMPLETED', 'REJECTED', 'IN_PROGRESS'
+  string new_status = 2;
 }
 message DeleteStaffRequest {
   string staff_id = 1;

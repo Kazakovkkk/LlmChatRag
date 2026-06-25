@@ -12,8 +12,8 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DocumentDto {
-    private String id;                  // UUID чанка из Qdrant
-    private String text;                // Очищенный текстовый сегмент
-    private Double score;               // Релевантность (используется при поиске)
-    private Map<String, Object> metadata; // Метаданные (теги, источник)
+    private String id;
+    private String text;
+    private Double score;
+    private Map<String, Object> metadata;
 }

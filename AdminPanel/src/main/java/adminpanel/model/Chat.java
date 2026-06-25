@@ -18,7 +18,7 @@ import java.util.List;
 @Builder
 public class Chat {
     @Id
-    private String id; // Сгенерированный UUID или сессия с фронтенда гостя
+    private String id;
 
     @Column(nullable = false)
     private String hotelKey;

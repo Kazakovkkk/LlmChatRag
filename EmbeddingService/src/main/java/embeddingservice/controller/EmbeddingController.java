@@ -8,7 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
+//docker run -e CUDA_VISIBLE_DEVICES="" semitechnologies/transformers-inference:intfloat-multilingual-e5-large
 @RestController
 @RequestMapping("/embed")
 @RequiredArgsConstructor

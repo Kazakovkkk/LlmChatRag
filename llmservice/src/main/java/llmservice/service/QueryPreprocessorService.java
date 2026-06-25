@@ -77,27 +77,55 @@ public class QueryPreprocessorService {
         this.objectMapper = objectMapper;
     }
 
-    public Mono<PreprocessedQuestion> preprocessQuestion(String question, List<MessageDto> history) {
-        //log.info("📥 [llmservice] Начался процесс классификации и препроцессинга запроса: '{}'", question);
-
+    public Mono<PreprocessedQuestion> preprocessQuestion(
+            String question,
+            List<MessageDto> history
+    ) {
         String historyContext = "";
+
         if (history != null && !history.isEmpty()) {
-            historyContext = "История беседы:\n" +
-                    history.stream()
-                            .map(m -> m.getRole() + ": " + m.getContent())
-                            .collect(Collectors.joining("\n"))
+            historyContext = "История беседы:\n"
+                    + history.stream()
+                    .map(message ->
+                            message.getRole()
+                                    + ": "
+                                    + message.getContent()
+                    )
+                    .collect(Collectors.joining("\n"))
                     + "\n\n";
         }
 
-        String prompt = historyContext + PREPROCESSED_SYSTEM_PROMPT_test + "\n\nТекущий вопрос пользователя: " + question;
+        String prompt = historyContext
+                + PREPROCESSED_SYSTEM_PROMPT
+                + "\n\nТекущий вопрос пользователя: "
+                + question;
 
         return llmRouter.chat(prompt)
-                .map(raw -> extractVariants(raw, question));
+                .map(raw -> extractVariants(raw, question))
+                .doOnNext(result ->
+                        log.info(
+                                "[llmservice] Результат препроцессинга: "
+                                        + "intentType={}, actionName={}, "
+                                        + "parameters={}, normalized={}, "
+                                        + "alternatives={}",
+                                result.getIntentType(),
+                                result.getActionName(),
+                                result.getParameters(),
+                                result.getNormalized(),
+                                result.getAlternatives()
+                        )
+                )
+                .doOnError(error ->
+                        log.error(
+                                "[llmservice] Ошибка препроцессинга вопроса '{}'",
+                                question,
+                                error
+                        )
+                );
     }
 
     private PreprocessedQuestion extractVariants(String rawResponse, String originalQuestion) {
         try {
-            // Очищаем возможный markdown-мусор, если модель проигнорировала инструкцию
             String cleanJson = rawResponse.trim();
             if (cleanJson.startsWith("```json")) {
                 cleanJson = cleanJson.substring(7);
@@ -107,10 +135,10 @@ public class QueryPreprocessorService {
             }
             cleanJson = cleanJson.trim();
 
-            //log.info("🤖 [llmservice] Сырой ответ LLM-классификатора: {}", cleanJson);
+            //log.info("[llmservice] Сырой ответ LLM-классификатора: {}", cleanJson);
             return objectMapper.readValue(cleanJson, PreprocessedQuestion.class);
         } catch (Exception e) {
-            log.error("❌ Ошибка парсинга JSON классификации интентов. Fallback на SEARCH. Ошибка: {}", e.getMessage());
+            log.error("Ошибка парсинга JSON классификации интентов. Fallback на SEARCH. Ошибка: {}", e.getMessage());
             // Безопасный Fallback на случай сбоя модели — отправляем в обычный поиск по базе знаний
             return new PreprocessedQuestion("SEARCH", null, Map.of(), originalQuestion, List.of(originalQuestion));
         }

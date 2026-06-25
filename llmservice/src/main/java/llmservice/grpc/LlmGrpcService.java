@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class LlmGrpcService extends LlmServiceGrpc.LlmServiceImplBase {
 
     private final AnswerGenerationService answerGenerationService;
-    private final QueryPreprocessorService queryPreprocessorService; // ← Инжектируем наш сервис препроцессинга
+    private final QueryPreprocessorService queryPreprocessorService;
 
     public LlmGrpcService(AnswerGenerationService answerGenerationService,
                           QueryPreprocessorService queryPreprocessorService) {
@@ -72,7 +72,6 @@ public class LlmGrpcService extends LlmServiceGrpc.LlmServiceImplBase {
         long start = System.currentTimeMillis();
         log.info("⏱ gRPC preprocessQuestion начало | Вопрос: '{}'", request.getQuestion());
 
-        // Маппим историю из Protobuf-формата в наши внутренние DTO (MessageDto)
         List<MessageDto> history = request.getHistoryList().stream()
                 .map(m -> {
                     MessageDto dto = new MessageDto();
@@ -86,34 +85,29 @@ public class LlmGrpcService extends LlmServiceGrpc.LlmServiceImplBase {
         queryPreprocessorService.preprocessQuestion(request.getQuestion(), history)
                 .subscribe(
                         processed -> {
-                            // Строим gRPC ответ на основе полученного DTO
                             PreprocessGrpcResponse.Builder responseBuilder = PreprocessGrpcResponse.newBuilder()
                                     .setIntentType(processed.getIntentType() != null ? processed.getIntentType() : "SEARCH")
                                     .setActionName(processed.getActionName() != null ? processed.getActionName() : "")
                                     .setNormalized(processed.getNormalized() != null ? processed.getNormalized() : "");
 
-                            // Заполняем map параметров (защита от null)
                             if (processed.getParameters() != null) {
                                 responseBuilder.putAllParameters(processed.getParameters());
                             }
 
-                            // Заполняем альтернативные формулировки для RAG (защита от null)
                             if (processed.getAlternatives() != null) {
                                 responseBuilder.addAllAlternatives(processed.getAlternatives());
                             }
 
-                            log.info("⏱ gRPC preprocessQuestion успешно завершен за {} мс | Интент: {}",
+                            log.info("gRPC preprocessQuestion успешно завершен за {} мс | Интент: {}",
                                     System.currentTimeMillis() - start, processed.getIntentType());
 
-                            // Отправляем ответ клиенту (оркестратору)
                             responseObserver.onNext(responseBuilder.build());
                             responseObserver.onCompleted();
                         },
                         error -> {
-                            log.error("❌ Ошибка gRPC preprocessQuestion | {} мс | {}",
+                            log.error("Ошибка gRPC preprocessQuestion | {} мс | {}",
                                     System.currentTimeMillis() - start, error.getMessage());
 
-                            // В случае критической ошибки возвращаем безопасный fallback-ответ (SEARCH)
                             PreprocessGrpcResponse fallbackResponse = PreprocessGrpcResponse.newBuilder()
                                     .setIntentType("SEARCH")
                                     .setNormalized(request.getQuestion())

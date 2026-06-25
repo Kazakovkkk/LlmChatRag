@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Virtual Assistant</title>
+    <style>
+        :root {
+            --bg-main: #121214;
+            --bg-card: #1a1a1e;
+            --primary: #e94560;
+            --text-main: #e0e0e0;
+            --text-muted: #8899aa;
+            --bubble-user: #2a2f3d;
+            --bubble-ai: #1f222b;
+            --border: #262930;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            height: 90vh;
+            background: var(--bg-card);
+            border-radius: 20px;
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Шапка чата */
+        .chat-header {
+            padding: 20px;
+            background: #16161a;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .hotel-info h2 {
+            margin: 0;
+            font-size: 18px;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
+        .hotel-info p {
+            margin: 5px 0 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .status-badge {
+            font-size: 11px;
+            padding: 5px 10px;
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border-radius: 20px;
+            border: 1px solid rgba(76, 175, 80, 0.2);
+            font-weight: 600;
+        }
+
+        /* Зона сообщений */
+        .messages-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+        }
+
+        .msg-row {
+            display: flex;
+            width: 100%;
+        }
+
+        .msg-row.user { justify-content: flex-end; }
+        .msg-row.assistant { justify-content: flex-start; }
+
+        .bubble {
+            max-width: 75%;
+            padding: 14px 18px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .msg-row.user .bubble {
+            background-color: var(--primary);
+            color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg-row.assistant .bubble {
+            background-color: var(--bubble-ai);
+            color: var(--text-main);
+            border-bottom-left-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        /* Индикатор того, что ИИ генерирует ответ */
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 15px;
+            background: var(--bubble-ai);
+            border-radius: 12px;
+            width: fit-content;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        /* Нижняя панель ввода */
+        .input-area {
+            padding: 20px;
+            background: #16161a;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 14px 20px;
+            background: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-area input:focus {
+            border-color: var(--primary);
+        }
+
+        .send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 12px rgba(233, 69, 96, 0.3);
+        }
+
+        .send-btn:hover { background: #c73652; }
+        .send-btn:active { transform: scale(0.95); }
+
+        .send-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: white;
+            transform: translateX(1px);
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <!-- Шапка приложения -->
+    <div class="chat-header">
+        <div class="hotel-info">
+            <h2 id="hotelName">Загрузка...</h2>
+            <p id="sessionInfo">ID сессии: инициализация...</p>
+        </div>
+        <div class="status-badge">AI Online</div>
+    </div>
+
+    <!-- Область вывода сообщений -->
+    <div class="messages-area" id="messagesArea">
+        <div class="msg-row assistant">
+            <div class="bubble">Приветствуем вас! Я ваш интеллектуальный помощник. Чем могу помочь вам сегодня?</div>
+        </div>
+    </div>
+
+    <!-- Индикатор ожидания токенов -->
+    <div style="padding-left: 20px; margin-bottom: 10px;">
+        <div class="typing-indicator" id="typingIndicator">
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <!-- Форма отправки вопроса -->
+    <div class="input-area">
+        <input type="text" id="userInput" placeholder="Задайте вопрос об услугах отеля..." onkeypress="if(event.key === 'Enter') sendMessage()">
+        <button class="send-btn" onclick="sendMessage()">
+            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+    </div>
+</div>
+
+<script>
+    // 1. Извлекаем параметры тенанта и сессии
+    const urlParams = new URLSearchParams(window.location.search);
+    const hotelKey = urlParams.get('hotel') || 'cosmos';
+    document.getElementById('hotelName').textContent = "Отель " + hotelKey.toUpperCase();
+
+    if (!localStorage.getItem('saas_chat_id')) {
+        const generatedId = 'guest_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('saas_chat_id', generatedId);
+    }
+    const chatId = localStorage.getItem('saas_chat_id');
+    document.getElementById('sessionInfo').textContent = `Сессия: ${chatId}`;
+
+    // Глобальный массив истории
+    let chatHistory = [];
+
+    const messagesArea = document.getElementById('messagesArea');
+    const userInput = document.getElementById('userInput');
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    // === НОВАЯ ФУНКЦИЯ: ЗАГРУЗКА ИСТОРИИ ИЗ БД ПРИ ПЕРЕЗАГРУЗКЕ ===
+    async function loadChatHistory() {
+        try {
+            const response = await fetch(`/api/chat/history?hotelKey=${hotelKey}&chatId=${chatId}`);
+            if (!response.ok) return;
+
+            const historyFromServer = await response.json();
+
+            if (historyFromServer && historyFromServer.length > 0) {
+                // Очищаем приветственное сообщение по умолчанию, если есть реальная история
+                messagesArea.innerHTML = '';
+
+                historyFromServer.forEach(msg => {
+                    // Отрисовываем сообщение на экране
+                    appendMessage(msg.role, msg.content);
+                    // Кладем в контекст для будущих запросов к LLM
+                    chatHistory.push({ role: msg.role, content: msg.content });
+                });
+            }
+        } catch (e) {
+            console.error("Не удалось подгрузить историю чата из БД:", e);
+        }
+    }
+
+    // Вызываем загрузку старых сообщений сразу при старте страницы
+    loadChatHistory();
+
+    /**
+     * Функция отправки нового сообщения (остается прежней)
+     */
+    async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        userInput.value = '';
+        userInput.disabled = true;
+
+        appendMessage('user', text);
+        typingIndicator.style.display = 'flex';
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+
+        const requestPayload = {
+            hotelKey: hotelKey,
+            chatId: chatId,
+            message: text,
+            history: chatHistory,
+            timestamp: new Date().toISOString()
+        };
+
+        chatHistory.push({ role: 'user', content: text });
+
+        try {
+            const response = await fetch('/api/chat/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestPayload)
+            });
+
+            if (!response.ok) throw new Error("Ошибка связи с сервером");
+
+            typingIndicator.style.display = 'none';
+            const aiBubble = appendMessage('assistant', '');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let incompleteChunk = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                incompleteChunk += decoder.decode(value, { stream: true });
+                const lines = incompleteChunk.split('\n');
+                incompleteChunk = lines.pop();
+
+                for (const line of lines) {
+                    let cleanLine = line.trim();
+                    if (!cleanLine) continue;
+                    if (cleanLine.startsWith("data:")) cleanLine = cleanLine.substring(5).trim();
+
+                    try {
+                        const parsed = JSON.parse(cleanLine);
+                        if (parsed.token) {
+                            aiBubble.textContent += parsed.token;
+                            messagesArea.scrollTop = messagesArea.scrollHeight;
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            chatHistory.push({ role: 'assistant', content: aiBubble.textContent });
+
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            appendMessage('assistant', '⚠️ Извините, произошел сбой сети.');
+            console.error(error);
+        } finally {
+            userInput.disabled = false;
+            userInput.focus();
+        }
+    }
+
+    function appendMessage(role, text) {
+        const row = document.createElement('div');
+        row.className = `msg-row ${role}`;
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = text;
+        row.appendChild(bubble);
+        messagesArea.appendChild(row);
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+        return bubble;
+    }
+</script>
+</body>
+</html>

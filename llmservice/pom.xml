@@ -10,7 +10,7 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>llmservice</artifactId>
+    <artifactId>LLMService</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>llmservice</name>
     <description>llmservice</description>

@@ -21,7 +21,7 @@ public class HotelManagementGrpcClient {
         this.stub = HotelManagementServiceGrpc.newBlockingStub(channel);
     }
 
-    // 1. Получение и обновление Гостей
+
     public List<GuestManagementDto> fetchGuests(String hotelKey) {
         GetGuestsResponse response = stub.getGuests(GetGuestsRequest.newBuilder().setHotelKey(hotelKey).build());
         List<GuestManagementDto> dtos = new ArrayList<>();
@@ -31,7 +31,6 @@ public class HotelManagementGrpcClient {
         return dtos;
     }
 
-    // 🌟 ИСПРАВЛЕНО: Добавлены null-safe проверки для Protobuf билдера
     public boolean updateGuest(String hotelKey, GuestManagementDto dto) {
         GuestManagementProto proto = GuestManagementProto.newBuilder()
                 .setId(dto.getId() != null ? dto.getId() : "")
@@ -47,7 +46,7 @@ public class HotelManagementGrpcClient {
         return res.getSuccess();
     }
 
-    // 2. Получение и обновление Персонала
+
     public List<StaffManagementDto> fetchStaff(String hotelKey) {
         GetStaffResponse response = stub.getStaff(GetStaffRequest.newBuilder().setHotelKey(hotelKey).build());
         List<StaffManagementDto> dtos = new ArrayList<>();
@@ -55,7 +54,7 @@ public class HotelManagementGrpcClient {
         return dtos;
     }
 
-    // 🌟 ИСПРАВЛЕНО: Добавлены null-safe проверки и для персонала во избежание аналогичной ошибки
+
     public boolean updateStaff(String hotelKey, StaffManagementDto dto) {
         StaffManagementProto proto = StaffManagementProto.newBuilder()
                 .setId(dto.getId() != null ? dto.getId() : "")
@@ -68,7 +67,6 @@ public class HotelManagementGrpcClient {
         return res.getSuccess();
     }
 
-    // 3. Получение и обновление Склада еды
     public List<MenuItemManagementDto> fetchMenu(String hotelKey) {
         GetMenuResponse response = stub.getMenu(GetMenuRequest.newBuilder().setHotelKey(hotelKey).build());
         List<MenuItemManagementDto> dtos = new ArrayList<>();
@@ -83,7 +81,7 @@ public class HotelManagementGrpcClient {
         return res.getSuccess();
     }
 
-    // 4. Получение и обновление Статуса заявок ИИ
+
     public List<TicketManagementDto> fetchTickets(String hotelKey) {
         GetTicketsResponse response = stub.getTickets(GetTicketsRequest.newBuilder().setHotelKey(hotelKey).build());
         List<TicketManagementDto> dtos = new ArrayList<>();

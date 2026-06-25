@@ -26,13 +26,13 @@ public class GigaChatService {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
-    private final String authKey; // Ключ авторизации (Client Secret из личного кабинета)
+    private final String authKey;
     private final String model;
     private final String scope;
     private final AtomicReference<Mono<String>> tokenMonoRef = new AtomicReference<>();
 
 
-    // Кэш токена в памяти приложения (токен живет 30 минут)
+
     private String cachedToken = null;
     private long tokenExpiresAt = 0;
 
@@ -41,7 +41,7 @@ public class GigaChatService {
             ObjectMapper objectMapper,
             @Value("${gigachat.auth-key}") String authKey,
             @Value("${gigachat.model:GigaChat}") String model,
-            @Value("${gigachat.scope:GIGACHAT_API_PERS}") String scope) { // GIGACHAT_API_PERS для физлиц
+            @Value("${gigachat.scope:GIGACHAT_API_PERS}") String scope) {
         this.webClient = webClient;
         this.objectMapper = objectMapper;
         this.authKey = authKey;
@@ -49,11 +49,8 @@ public class GigaChatService {
         this.scope = scope;
     }
 
-    /**
-     * Получение или реактивное обновление OAuth-токена
-     */
+
     private Mono<String> getAccessToken() {
-        // Создаём кэшируемый Mono лениво, ровно один раз
         return tokenMonoRef.updateAndGet(existing ->
                 existing != null ? existing : createCachedTokenMono()
         );
@@ -61,7 +58,6 @@ public class GigaChatService {
 
     private Mono<String> createCachedTokenMono() {
         Mono<String> tokenMono = Mono.defer(() -> {
-            //log.info("🔄 Запрос нового OAuth токена GigaChat...");
             return webClient.post()
                     .uri("https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
                     .header("Authorization", "Basic " + authKey)
@@ -74,7 +70,7 @@ public class GigaChatService {
                         try {
                             JsonNode node = objectMapper.readTree(response);
                             String token = node.path("access_token").asText();
-                            //log.info("✅ OAuth токен GigaChat успешно обновлен");
+
                             return token;
                         } catch (Exception e) {
                             throw new RuntimeException("Ошибка парсинга токена GigaChat: " + e.getMessage());
@@ -83,14 +79,13 @@ public class GigaChatService {
         });
 
         return tokenMono.cache(
-                        value -> Duration.ofMinutes(25), // успешный токен кэшируем на 25 минут
-                        error -> Duration.ZERO,          // ошибки не кэшируем
-                        () -> Duration.ZERO              // empty (на всякий случай) тоже не кэшируем
+                        value -> Duration.ofMinutes(25),
+                        error -> Duration.ZERO,
+                        () -> Duration.ZERO
                 )
                 .doOnError(e -> {
-                    // сбрасываем ссылку, чтобы следующий вызов пересоздал Mono и попробовал заново
                     tokenMonoRef.set(null);
-                    log.error("❌ Ошибка получения OAuth токена GigaChat: {}", e.getMessage());
+                    log.error("Ошибка получения OAuth токена GigaChat: {}", e.getMessage());
                 });
     }
 

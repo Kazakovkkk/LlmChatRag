@@ -212,7 +212,6 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
         responseObserver.onCompleted();
     }
 
-    // 2. Создание новой позиции в меню
     @Override
     @Transactional
     public void createMenu(com.example.grpc.management.CreateMenuRequest request,

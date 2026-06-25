@@ -24,15 +24,11 @@ public class StubChatService {
             "Это тестовый ответ заглушки LLM для нагрузочного тестирования системы бронирования отеля. " +
                     "Все необходимые сервисы и базы данных опрошены успешно.";
 
-    /**
-     * Используется и для препроцессинга (ожидает JSON), и для нестримингового ответа.
-     * Различаем по содержимому промпта.
-     */
+
     public Mono<String> chat(String prompt) {
-        int delay = 200 + RANDOM.nextInt(101); // 200-300 мс
+        int delay = 200 + RANDOM.nextInt(101);
 
         if (prompt.contains("\"intentType\"")) {
-            // Это запрос препроцессора → возвращаем валидный JSON под PreprocessedQuestion
             String question = extractQuestion(prompt);
 
             Map<String, Object> response = Map.of(
@@ -55,13 +51,9 @@ public class StubChatService {
             }
         }
 
-        // Нестриминговый ответ (используется RagChatService.chat -> /llm/answer)
         return Mono.just(STUB_ANSWER).delayElement(Duration.ofMillis(delay));
     }
 
-    /**
-     * Стриминговый ответ гостю. Эмулирует генерацию токенов за 200-300 мс суммарно.
-     */
     public Flux<String> chatStream(String prompt) {
         String[] words = STUB_ANSWER.split(" ");
         int totalDelay = 200 + RANDOM.nextInt(101);
