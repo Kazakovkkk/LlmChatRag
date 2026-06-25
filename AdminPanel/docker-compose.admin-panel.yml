@@ -1,0 +1,36 @@
+name: admin-panel
+
+services:
+  admin-panel:
+    image: hotel-assistant/admin-panel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: AdminPanel
+
+    restart: unless-stopped
+
+    ports:
+      - "8087:8087"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SERVER_PORT: 8087
+      JAVA_OPTS: ${ADMIN_JAVA_OPTS:--Xms256m -Xmx768m}
+
+      DB_HOST: host.docker.internal
+      DB_PORT: ${ADMIN_DB_PORT:-5432}
+      DB_NAME: ${ADMIN_DB_NAME:-hotel_admin_db}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+
+      SPRING_GRPC_CLIENT_CHANNELS_RAG_SERVICE_ADDRESS: static://host.docker.internal:9090
+      SPRING_GRPC_CLIENT_CHANNELS_RAG_SERVICE_NEGOTIATION_TYPE: plaintext
+
+      SPRING_GRPC_CLIENT_CHANNELS_HOTEL_MANAGEMENT_SERVICE_ADDRESS: static://host.docker.internal:9089
+      SPRING_GRPC_CLIENT_CHANNELS_HOTEL_MANAGEMENT_SERVICE_NEGOTIATION_TYPE: plaintext
+
+      SPRING_THYMELEAF_CACHE: "false"

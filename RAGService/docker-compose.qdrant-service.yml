@@ -1,0 +1,40 @@
+name: qdrant-service
+
+services:
+  qdrant-service:
+    image: hotel-assistant/qdrant-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: qdrantservice
+
+    restart: unless-stopped
+
+    ports:
+      - "8085:8085"
+      - "9090:9090"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SERVER_PORT: 8085
+      SPRING_GRPC_SERVER_PORT: 9090
+      JAVA_OPTS: ${QDRANT_SERVICE_JAVA_OPTS:--Xms512m -Xmx1536m}
+
+      QDRANT_HOST: host.docker.internal
+      QDRANT_PORT: 6334
+
+      EMBEDDING_SERVICE_URL: http://host.docker.internal:8084
+      EMBEDDING_PROTOCOL: ${EMBEDDING_PROTOCOL:-grpc}
+
+      SPRING_GRPC_CLIENT_CHANNELS_EMBEDDING_SERVICE_ADDRESS: static://host.docker.internal:9091
+      SPRING_GRPC_CLIENT_CHANNELS_EMBEDDING_SERVICE_NEGOTIATION_TYPE: plaintext
+
+      CHUNKER_EMBEDDING_MODE: batch
+      CHUNKING_STRATEGY: semantic
+      CHUNKING_FIXED_SIZE: 900
+      CHUNKING_FIXED_OVERLAP: 250
+      CHUNKING_RECURSIVE_MAX_SIZE: 900
+      CHUNKING_RECURSIVE_OVERLAP: 250

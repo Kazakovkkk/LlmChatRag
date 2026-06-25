@@ -1,0 +1,32 @@
+name: hotel-action-service
+
+services:
+  hotel-action-service:
+    image: hotel-assistant/hotel-action-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: HotelActionService
+
+    restart: unless-stopped
+
+    ports:
+      - "8089:8089"
+      - "9089:9089"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SERVER_PORT: 8089
+      SPRING_GRPC_SERVER_PORT: 9089
+      JAVA_OPTS: ${HOTEL_ACTION_JAVA_OPTS:--Xms256m -Xmx768m}
+
+      DB_HOST: host.docker.internal
+      DB_PORT: ${HOTEL_ACTION_DB_PORT:-5432}
+      DB_NAME: ${HOTEL_ACTION_DB_NAME:-hotel_actions_db}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update

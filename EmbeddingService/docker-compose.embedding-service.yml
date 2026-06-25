@@ -1,0 +1,27 @@
+name: embedding-service
+
+services:
+  embedding-service:
+    image: hotel-assistant/embedding-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: EmbeddingService
+
+    restart: unless-stopped
+
+    ports:
+      - "8084:8084"
+      - "9091:9091"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      SERVER_PORT: 8084
+      SPRING_GRPC_SERVER_PORT: 9091
+      JAVA_OPTS: ${EMBEDDING_JAVA_OPTS:--Xms256m -Xmx768m}
+
+      HUGGINGFACE_TEI_URL: http://host.docker.internal:8081
+      HUGGINGFACE_TEI_MAX_BATCH_SIZE: ${HUGGINGFACE_TEI_MAX_BATCH_SIZE:-32}
