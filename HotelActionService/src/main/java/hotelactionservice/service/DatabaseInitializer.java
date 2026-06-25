@@ -25,11 +25,10 @@ public class DatabaseInitializer {
     @PostConstruct
     @Transactional
     public void initTestData() {
-        log.info("🚀 [DatabaseInitializer] Запуск автоматического наполнения БД тестовыми данными...");
+        log.info("[DatabaseInitializer] Запуск автоматического наполнения БД тестовыми данными...");
 
         String hotelKey = "cosmos";
 
-        // 1. Инициализация тестового гостя
         String testChatId = "guest_opuabappze";
         if (guestRepository.findByChatIdAndHotelKey(testChatId, hotelKey).isEmpty()) {
             Guest guest = Guest.builder()
@@ -40,18 +39,15 @@ public class DatabaseInitializer {
                     .roomNumber("505")
                     .passportDataEncrypted("PASSPORT_COSMOS_8877")
                     .status("CHECKED_IN")
-                    .build(); // 🌟 ID НЕ УКАЗЫВАЕМ! Он будет null, и Hibernate сделает чистый INSERT
+                    .build();
 
             guestRepository.save(guest);
             log.info("Тестовый гость Иван (комната 505) успешно добавлен для отеля '{}'", hotelKey);
         }
-
-        // 2. Инициализация персонала отеля (Проверяем по имени, так как ID теперь генерирует БД)
         initStaffIfNotExist(hotelKey, "Наталья (свободна)", "MAID", "FREE");
         initStaffIfNotExist(hotelKey, "Ольга (занята)", "MAID", "BUSY");
         initStaffIfNotExist(hotelKey, "Дмитрий (официант)", "WAITER", "FREE");
 
-        // 3. Инициализация ресторанного меню (Проверяем по названию блюда)
         initFoodItemIfNotExist(hotelKey, "пицца", new BigDecimal("790.00"), 10);
         initFoodItemIfNotExist(hotelKey, "суп", new BigDecimal("380.00"), 0);
         initFoodItemIfNotExist(hotelKey, "кола", new BigDecimal("150.00"), 25);
@@ -60,7 +56,6 @@ public class DatabaseInitializer {
     }
 
     private void initStaffIfNotExist(String hotelKey, String name, String role, String status) {
-        // Проверяем наличие по имени в рамках конкретного отеля
         boolean exists = hotelStaffRepository.findAllByHotelKey(hotelKey).stream()
                 .anyMatch(staff -> staff.getName().equalsIgnoreCase(name));
 
@@ -70,7 +65,7 @@ public class DatabaseInitializer {
                     .name(name)
                     .role(role)
                     .status(status)
-                    .build(); // 🌟 ID генерируется автоматически через IDENTITY
+                    .build();
             hotelStaffRepository.save(staff);
             log.info("Сотрудник {} ({}) добавлен в штат отеля '{}'", name, role, hotelKey);
         }
@@ -83,7 +78,7 @@ public class DatabaseInitializer {
                     .name(name)
                     .price(price)
                     .stockQuantity(stock)
-                    .build(); // 🌟 ID генерируется автоматически через IDENTITY
+                    .build(); 
             foodMenuRepository.save(item);
             log.info("Блюдо '{}' (Цена: {} руб, Остаток: {} шт) добавлено в меню отеля '{}'", name, price, stock, hotelKey);
         }

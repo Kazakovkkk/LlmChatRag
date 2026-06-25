@@ -25,10 +25,10 @@ public class ActionTicket {
     private Guest guest;
 
     @Column(name = "ticket_type", nullable = false, length = 50)
-    private String ticketType; // 'ORDER_FOOD', 'ROOM_CLEANING'
+    private String ticketType;
 
     @Column(nullable = false, length = 30)
-    private String status; // 'CREATED', 'IN_PROGRESS', 'QUEUED', 'COMPLETED', 'REJECTED'
+    private String status;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_staff_id")
@@ -37,7 +37,6 @@ public class ActionTicket {
     @Column(name = "total_price", precision = 10, scale = 2)
     private BigDecimal totalPrice;
 
-    // Удалите старое определение и замените на это:
     @org.hibernate.annotations.CreationTimestamp
     @Column(name = "created_at", updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private java.time.LocalDateTime createdAt;

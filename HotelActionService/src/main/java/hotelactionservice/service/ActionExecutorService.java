@@ -30,7 +30,7 @@ public class ActionExecutorService {
 
     @Transactional
     public ActionResponse processAction(String hotelKey, String chatId, String actionName, Map<String, String> parameters) {
-        log.info("🎯 [ActionExecutorEngine] Запуск транзакции '{}' для отеля '{}', сессия: {}", actionName, hotelKey, chatId);
+        log.info("[ActionExecutorEngine] Запуск транзакции '{}' для отеля '{}', сессия: {}", actionName, hotelKey, chatId);
 
         Guest guest = guestRepository.findByChatIdAndHotelKey(chatId, hotelKey).orElse(null);
 
@@ -39,7 +39,7 @@ public class ActionExecutorService {
             return new ActionResponse(
                     false,
                     "UNAUTHORIZED",
-                    "⚠ Действие отклонено. Система не смогла верифицировать ваш профиль проживающего. Пожалуйста, обратитесь на стойку регистрации (Reception).",
+                    "Действие отклонено. Система не смогла верифицировать ваш профиль проживающего. Пожалуйста, обратитесь на стойку регистрации (Reception).",
                     Map.of()
             );
         }
@@ -59,7 +59,7 @@ public class ActionExecutorService {
             case "ORDER_FOOD":
                 return handleOrderFood(hotelKey, guest, parameters);
             default:
-                log.warn("⚠ Неизвестное транзакционное намерение: {}", actionName);
+                log.warn("Неизвестное транзакционное намерение: {}", actionName);
                 return new ActionResponse(
                         false,
                         "NOT_SUPPORTED",
@@ -102,7 +102,6 @@ public class ActionExecutorService {
             details.put("ticket_status", "QUEUED");
         }
 
-        // Сохраняем, ID сгенерируется автоматически базой данных (IDENTITY)
         ActionTicket savedTicket = actionTicketRepository.save(ticket);
         details.put("ticket_id", String.valueOf(savedTicket.getId()));
 
@@ -148,7 +147,7 @@ public class ActionExecutorService {
 
         ActionTicket savedTicket = actionTicketRepository.save(ticket);
 
-        String message = String.format("🎉 Заказ оформлен! %s, мы списали со склада 1 шт. '%s'. Сумма заказа: %s руб. записана на ваш номер %s. Доставка в номер займет 30 минут.",
+        String message = String.format("Заказ оформлен! %s, мы списали со склада 1 шт. '%s'. Сумма заказа: %s руб. записана на ваш номер %s. Доставка в номер займет 30 минут.",
                 guest.getFirstName(), foodItem.getName(), foodItem.getPrice(), guest.getRoomNumber());
 
         Map<String, String> details = Map.of(

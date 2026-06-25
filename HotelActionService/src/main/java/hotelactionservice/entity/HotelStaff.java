@@ -23,8 +23,8 @@ public class HotelStaff {
     private String name;
 
     @Column(nullable = false, length = 50)
-    private String role; // 'MAID', 'WAITER', 'TECHNICIAN'
+    private String role;
 
     @Column(nullable = false, length = 30)
-    private String status; // 'FREE', 'BUSY', 'OFF_DUTY'
+    private String status;
 }

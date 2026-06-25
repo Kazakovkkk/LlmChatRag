@@ -16,7 +16,6 @@ public class ActionResponse {
         this.details = details;
     }
 
-    // Геттеры и сеттеры
     public boolean isSuccess() { return success; }
     public void setSuccess(boolean success) { this.success = success; }
     public String getStatus() { return status; }

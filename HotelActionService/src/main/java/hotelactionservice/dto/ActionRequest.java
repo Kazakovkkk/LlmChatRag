@@ -10,7 +10,6 @@ public class ActionRequest {
 
     public ActionRequest() {}
 
-    // Геттеры и сеттеры
     public String getHotelKey() { return hotelKey; }
     public void setHotelKey(String hotelKey) { this.hotelKey = hotelKey; }
     public String getChatId() { return chatId; }

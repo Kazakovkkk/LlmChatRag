@@ -30,7 +30,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Override
     @Transactional(readOnly = true)
     public void getGuests(com.example.grpc.management.GetGuestsRequest request, StreamObserver<com.example.grpc.management.GetGuestsResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Запрос списка гостей для отеля: {}", request.getHotelKey());
+        log.info("gRPC Admin | Запрос списка гостей для отеля: {}", request.getHotelKey());
         List<Guest> guests = guestRepository.findAllByHotelKey(request.getHotelKey());
         com.example.grpc.management.GetGuestsResponse.Builder rb = com.example.grpc.management.GetGuestsResponse.newBuilder();
 
@@ -53,7 +53,6 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
         try {
             com.example.grpc.management.GuestManagementProto p = request.getGuest();
 
-            // Если ID пустой или равен "0", создаем новую сущность, иначе ищем в БД
             Guest guest = (p.getId() == null || p.getId().isEmpty() || "0".equals(p.getId()))
                     ? new Guest()
                     : guestRepository.findById(Long.parseLong(p.getId())).orElse(new Guest());
@@ -77,7 +76,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Override
     @Transactional(readOnly = true)
     public void getStaff(com.example.grpc.management.GetStaffRequest request, StreamObserver<com.example.grpc.management.GetStaffResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Запрос списка персонала для отеля: {}", request.getHotelKey());
+        log.info("gRPC Admin | Запрос списка персонала для отеля: {}", request.getHotelKey());
         List<HotelStaff> staffList = hotelStaffRepository.findAllByHotelKey(request.getHotelKey());
         com.example.grpc.management.GetStaffResponse.Builder rb = com.example.grpc.management.GetStaffResponse.newBuilder();
 
@@ -134,7 +133,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Override
     @Transactional
     public void updateMenuStock(com.example.grpc.management.UpdateMenuStockRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Коррекция склада. ID: {}, Остаток: {} шт.", request.getItemId(), request.getStockQuantity());
+        log.info("gRPC Admin | Коррекция склада. ID: {}, Остаток: {} шт.", request.getItemId(), request.getStockQuantity());
         try {
             FoodMenu item = foodMenuRepository.findById(Long.parseLong(request.getItemId()))
                     .orElseThrow(() -> new IllegalArgumentException("Товар не найден"));
@@ -152,7 +151,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Override
     @Transactional(readOnly = true)
     public void getTickets(com.example.grpc.management.GetTicketsRequest request, StreamObserver<com.example.grpc.management.GetTicketsResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Запрос лога заявок для отеля: {}", request.getHotelKey());
+        log.info("gRPC Admin | Запрос лога заявок для отеля: {}", request.getHotelKey());
         List<ActionTicket> tickets = actionTicketRepository.findAllByHotelKeyOrderByCreatedAtDesc(request.getHotelKey());
         com.example.grpc.management.GetTicketsResponse.Builder rb = com.example.grpc.management.GetTicketsResponse.newBuilder();
 
@@ -173,7 +172,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Override
     @Transactional
     public void updateTicketStatus(com.example.grpc.management.UpdateTicketStatusRequest request, StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Изменение статуса тикета {} на {}", request.getTicketId(), request.getNewStatus());
+        log.info("gRPC Admin | Изменение статуса тикета {} на {}", request.getTicketId(), request.getNewStatus());
         try {
             ActionTicket ticket = actionTicketRepository.findById(Long.parseLong(request.getTicketId()))
                     .orElseThrow(() -> new IllegalArgumentException("Тикет не найден"));
@@ -185,7 +184,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
             if (ticket.getAssignedStaff() != null && ("COMPLETED".equals(newStatus) || "REJECTED".equals(newStatus))) {
                 if ("IN_PROGRESS".equals(oldStatus)) {
                     ticket.getAssignedStaff().setStatus("FREE");
-                    log.info("💼 Автоматическое освобождение сотрудника: {}", ticket.getAssignedStaff().getName());
+                    log.info("Автоматическое освобождение сотрудника: {}", ticket.getAssignedStaff().getName());
                 }
             }
 
@@ -200,7 +199,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Transactional
     public void deleteStaff(com.example.grpc.management.DeleteStaffRequest request,
                             StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Удаление сотрудника с ID: {}", request.getStaffId());
+        log.info("gRPC Admin | Удаление сотрудника с ID: {}", request.getStaffId());
         try {
             Long staffId = Long.parseLong(request.getStaffId());
             hotelStaffRepository.deleteById(staffId);
@@ -218,7 +217,7 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
     @Transactional
     public void createMenu(com.example.grpc.management.CreateMenuRequest request,
                            StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Добавление позиции в меню: {}", request.getName());
+        log.info("gRPC Admin | Добавление позиции в меню: {}", request.getName());
         try {
             FoodMenu item = FoodMenu.builder()
                     .hotelKey(request.getHotelKey())
@@ -236,7 +235,6 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
         responseObserver.onCompleted();
     }
 
-    // 3. Удаление позиции из меню
     @Override
     @Transactional
     public void deleteMenu(com.example.grpc.management.DeleteMenuRequest request,
@@ -254,14 +252,12 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
         responseObserver.onCompleted();
     }
 
-    // 4. Ручное создание заявки
     @Override
     @Transactional
     public void createTicket(com.example.grpc.management.CreateTicketRequest request,
                              StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Ручное создание заявки типа {} для комнаты {}", request.getTicketType(), request.getRoomNumber());
+        log.info("gRPC Admin | Ручное создание заявки типа {} для комнаты {}", request.getTicketType(), request.getRoomNumber());
         try {
-            // Ищем или создаем фиктивного гостя для привязки транзакции внутри СУБД
             Guest guest = guestRepository.findAllByHotelKey(request.getHotelKey()).stream()
                     .filter(g -> g.getRoomNumber().equals(request.getRoomNumber()))
                     .findFirst()
@@ -292,12 +288,11 @@ public class HotelManagementGrpcService extends HotelManagementServiceGrpc.Hotel
         responseObserver.onCompleted();
     }
 
-    // 5. Удаление архивной заявки
     @Override
     @Transactional
     public void deleteTicket(com.example.grpc.management.DeleteTicketRequest request,
                              StreamObserver<com.example.grpc.management.ManagementActionResponse> responseObserver) {
-        log.info("📥 gRPC Admin | Удаление тикета с ID: {}", request.getTicketId());
+        log.info("gRPC Admin | Удаление тикета с ID: {}", request.getTicketId());
         try {
             Long ticketId = Long.parseLong(request.getTicketId());
             actionTicketRepository.deleteById(ticketId);
